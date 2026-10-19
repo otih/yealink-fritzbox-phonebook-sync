@@ -14,8 +14,13 @@ This leaves AX83H owners with a phone that can synchronize contacts from Google 
 
 The solution this project implements: use the Fritzbox as an intermediary. The Fritzbox maintains its own Google Contacts import (via OAuth, managed by AVM) and stores the synchronized contacts in its internal phonebook. This server reads those phonebooks via the Fritzbox TR-064 API and converts them to the Yealink remote-phonebook XML format — bypassing the broken Google sync entirely.
 
+One could argue that implementing OAuth 2.0 directly in this server (talking to Google's People API) would be a more "native" solution. However, the Fritzbox-as-proxy approach has a decisive advantage: **multi-source aggregation**. The Fritzbox can sync phonebooks from multiple independent sources — for example, two different Google accounts plus a CardDAV server (e.g. Nextcloud) — each appearing as a separate Fritzbox phonebook. The Fritzbox handles all the OAuth flows, token renewals, and CardDAV negotiations. This server simply reads whatever phonebooks the Fritzbox has aggregated, without needing to know or care where the contacts originated. Implementing multi-account Google OAuth plus CardDAV in this server would be significantly more complex and fragile.
+
 ```
-Google Contacts ──OAuth──→ Fritzbox (nightly sync) ──TR-064 SOAP──→ this server ──HTTP──→ Yealink phone
+Google (Acct 1) ──OAuth──┐
+                         ├──→ Fritzbox (aggregates) ──TR-064 SOAP──→ this server ──HTTP──→ Yealink
+Google (Acct 2) ──OAuth──┤
+Nextcloud ────CardDAV────┘
 ```
 
 ### Interfaces involved
