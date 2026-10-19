@@ -2,7 +2,7 @@
 
 # Alpine-based: our app is pure Python stdlib, no native deps, no pip install.
 # ~55MB base + ~1MB app = smallest viable image.
-FROM python:3.12-alpine
+FROM python:3-alpine
 
 LABEL org.opencontainers.image.title="yealink-fritzbox-phonebook-sync"
 LABEL org.opencontainers.image.description="Fritzbox → Yealink phonebook sync server"
