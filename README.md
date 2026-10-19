@@ -45,8 +45,22 @@ The server maintains an in-memory cache of the converted phonebook. The Yealink 
 
 ### Option A: Docker (recommended)
 
+**Pull the pre-built image** (built automatically via GitHub Actions):
+
 ```bash
-git clone <repo-url> && cd yealink-fritzbox-phonebook-sync
+docker pull ghcr.io/otih/yealink-fritzbox-phonebook-sync:latest
+```
+
+Then create a `docker-compose.yml` (or use the one from this repo) and a `.env` file, and start:
+
+```bash
+docker compose up -d
+```
+
+**Or build from source:**
+
+```bash
+git clone https://github.com/otih/yealink-fritzbox-phonebook-sync.git && cd yealink-fritzbox-phonebook-sync
 cp .env.example .env
 # Edit .env — set FB_USER, FB_PASSWORD, SYNC_SERVER_URL, SYNC_AUTH_USER, SYNC_AUTH_PASSWORD
 nano .env
