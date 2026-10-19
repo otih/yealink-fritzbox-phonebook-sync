@@ -14,13 +14,12 @@ This leaves AX83H owners with a phone that can synchronize contacts from Google 
 
 The solution this project implements: use the Fritzbox as an intermediary. The Fritzbox maintains its own Google Contacts import (via OAuth, managed by AVM) and stores the synchronized contacts in its internal phonebook. This server reads those phonebooks via the Fritzbox TR-064 API and converts them to the Yealink remote-phonebook XML format — bypassing the broken Google sync entirely.
 
-One could argue that implementing OAuth 2.0 directly in this server (talking to Google's People API) would be a more "native" solution. However, the Fritzbox-as-proxy approach has a decisive advantage: **multi-source aggregation**. The Fritzbox can sync phonebooks from multiple independent sources — for example, two different Google accounts plus a CardDAV server (e.g. Nextcloud) — each appearing as a separate Fritzbox phonebook. The Fritzbox handles all the OAuth flows, token renewals, and CardDAV negotiations. This server simply reads whatever phonebooks the Fritzbox has aggregated, without needing to know or care where the contacts originated. Implementing multi-account Google OAuth plus CardDAV in this server would be significantly more complex and fragile.
+One could argue that implementing OAuth 2.0 directly in this server (talking to Google's People API) would be a more "native" solution. However, the Fritzbox-as-proxy approach has a decisive architectural advantage: **multi-source aggregation**. The Fritzbox can sync phonebooks from multiple independent sources — multiple Google accounts, CardDAV servers (e.g. Nextcloud), or other mail providers — each appearing as a separate Fritzbox phonebook. The Fritzbox handles all the OAuth flows, token renewals, and CardDAV negotiations. This server simply reads whatever phonebooks the Fritzbox has aggregated, without needing to know or care where the contacts originated. Implementing multi-provider OAuth plus CardDAV in this server would be significantly more complex and fragile, and would tightly couple the phonebook sync to specific upstream APIs that can change at any time.
 
 ```
-Google (Acct 1) ──OAuth──┐
-                         ├──→ Fritzbox (aggregates) ──TR-064 SOAP──→ this server ──HTTP──→ Yealink
-Google (Acct 2) ──OAuth──┤
-Nextcloud ────CardDAV────┘
+Source 1 ──OAuth/CardDAV──┐
+Source 2 ──OAuth/CardDAV──┤──→ Fritzbox (aggregates) ──TR-064 SOAP──→ this server ──HTTP──→ Yealink
+Source 3 ──OAuth/CardDAV──┘
 ```
 
 ### Interfaces involved
@@ -153,7 +152,7 @@ The `FB_PHONEBOOK_ID` setting (or `--phonebook-id` flag) controls which phoneboo
 | Multiple IDs (e.g. `0,1`) | Each phonebook appears as a separate selectable entry |
 | Empty (unset) | All phonebooks are auto-detected and listed individually |
 
-Each phonebook shows its name and contact count in the menu (e.g. "Fabian (193)"). Empty phonebooks — those containing only internal Fritzbox numbers like `**9` or `**600` — are automatically hidden from the menu.
+Each phonebook shows its name and contact count in the menu (e.g. "Work (193)"). Empty phonebooks — those containing only internal Fritzbox numbers like `**9` or `**600` — are automatically hidden from the menu.
 
 ## Configuration
 
@@ -215,7 +214,7 @@ Without auth, anyone on the same network can read the full phonebook. **Setting 
    - Each `<Telephone>` gets a `label` attribute mapped from the Fritzbox number type (Mobil, Festnetz, Arbeit, Fax, Sonstige)
    - Internal Fritzbox numbers (`**9`, `**600`, etc.) are filtered out
    - The phonebook name is extracted from the Fritzbox XML and used as the menu label
-5. **Menu** — builds a `YealinkIPPhoneMenu` listing all non-empty phonebooks as selectable `<MenuItem>` entries, each showing the phonebook name and contact count (e.g. "Fabian (193)"). Each item links to its own `/contacts/<id>.xml` endpoint.
+5. **Menu** — builds a `YealinkIPPhoneMenu` listing all non-empty phonebooks as selectable `<MenuItem>` entries, each showing the phonebook name and contact count (e.g. "Work (193)"). Each item links to its own `/contacts/<id>.xml` endpoint.
 6. **Serve** — `/menu.xml` and `/contacts/<id>.xml` are served over plain HTTP (HTTP/1.1 with `Connection: close`).
 7. **Refresh** — a background thread re-syncs from the Fritzbox every `SYNC_REFRESH_INTERVAL` seconds. If a sync fails (network error, Fritzbox reboot, etc.), the server continues serving the last-known-good data and retries on the next cycle.
 
