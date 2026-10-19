@@ -566,12 +566,17 @@ class PhonebookHandler(BaseHTTPRequestHandler):
 # Sync loop
 # ---------------------------------------------------------------------------
 
-def sync_once(client, phonebook_ids, server_base):
+def sync_once(client, phonebook_ids, server_base, external_url):
     """Perform one sync cycle. Raises on failure — caller handles retries.
 
     Fetches each phonebook individually, converts it, and builds a menu
     listing all non-empty phonebooks. Empty phonebooks (0 contacts after
     filtering internal numbers) are excluded from the menu.
+
+    Args:
+        server_base: used for internal URL construction (no credentials)
+        external_url: used for Menu.xml <URL> tags (may include embedded
+                     credentials for phones without separate auth fields)
     """
     if not phonebook_ids:
         phonebook_ids = client.get_phonebook_ids()
@@ -589,7 +594,7 @@ def sync_once(client, phonebook_ids, server_base):
         total += count
         logger.info("Phonebook %d '%s': %d contacts", pid, pb_name, count)
 
-    menu = build_menu_xml(pb_meta, server_base)
+    menu = build_menu_xml(pb_meta, external_url)
 
     with state.lock:
         state.menu_xml = menu
@@ -600,7 +605,7 @@ def sync_once(client, phonebook_ids, server_base):
     logger.info("Sync complete: %d phonebooks, %d total contacts", len(pb_meta), total)
 
 
-def sync_loop(client, phonebook_ids, server_base, refresh_interval):
+def sync_loop(client, phonebook_ids, server_base, external_url, refresh_interval):
     """Background thread: periodic sync with automatic retry."""
     pb_ids = list(phonebook_ids)
     while True:
@@ -613,7 +618,7 @@ def sync_loop(client, phonebook_ids, server_base, refresh_interval):
                 time.sleep(refresh_interval)
                 continue
         try:
-            sync_once(client, pb_ids, server_base)
+            sync_once(client, pb_ids, server_base, external_url)
         except Exception as exc:
             logger.warning("Sync failed (will retry in %ds): %s", refresh_interval, exc)
         time.sleep(refresh_interval)
@@ -638,8 +643,8 @@ def main():
     p.add_argument("--refresh-interval", type=int,
                    default=int(os.getenv("SYNC_REFRESH_INTERVAL", "3600")),
                    help="Seconds between syncs (default: 3600 = 1h)")
-    p.add_argument("--server-url", default=os.getenv("SYNC_SERVER_URL", ""),
-                   help="Reachable URL of this server, e.g. http://192.168.1.50:8080")
+    p.add_argument("--server-url", default=os.getenv("SYNC_SERVER_URL", os.getenv("SYNC_EXTERNAL_URL", "")),
+                   help="External URL the Yealink phone uses to reach this server, e.g. http://192.168.1.50:8080")
     p.add_argument("--auth-user", default=os.getenv("SYNC_AUTH_USER", ""),
                    help="HTTP Basic Auth username for phonebook access (empty = no auth)")
     p.add_argument("--auth-password", default=os.getenv("SYNC_AUTH_PASSWORD", ""),
@@ -662,7 +667,11 @@ def main():
                        args.server_url)
         logger.warning("Set --server-url to the IP/hostname the Yealink will use.")
 
+    # server_base: used for internal URL construction (no credentials)
+    # external_url: used for the Menu.xml <URL> tags (includes credentials
+    # if auth is enabled, because the AX83H has no separate auth fields)
     server_base = args.server_url.rstrip("/")
+    external_url = server_base
 
     # Set HTTP Basic Auth credentials globally for the handler
     global auth_user, auth_pass
@@ -670,6 +679,16 @@ def main():
     auth_pass = args.auth_password
     if auth_user:
         logger.info("HTTP Basic Auth enabled (user: %s)", auth_user)
+        # Embed credentials in the external URL for the phone
+        # The AX83H does not have separate username/password fields for
+        # remote phonebooks, so credentials must be in the URL.
+        # Format: http://user:pass@host:port
+        if "://" in server_base:
+            scheme, _, rest = server_base.partition("://")
+            external_url = "%s://%s:%s@%s" % (scheme, auth_user, auth_pass, rest)
+        else:
+            external_url = "http://%s:%s@%s" % (auth_user, auth_pass, server_base)
+        logger.info("External URL (with embedded auth): %s", external_url)
     else:
         logger.warning("HTTP Basic Auth DISABLED — phonebook is accessible without credentials")
 
@@ -689,18 +708,18 @@ def main():
 
     # Serve a placeholder until first successful sync
     with state.lock:
-        state.menu_xml = _placeholder_menu(args.server_url)
+        state.menu_xml = _placeholder_menu(external_url)
 
     # Initial sync (non-blocking — server starts even if this fails)
     try:
-        sync_once(client, pb_ids, server_base)
+        sync_once(client, pb_ids, server_base, external_url)
     except Exception as exc:
         logger.warning("Initial sync failed (will retry in background): %s", exc)
 
     # Background sync thread
     t = threading.Thread(
         target=sync_loop,
-        args=(client, pb_ids, server_base, args.refresh_interval),
+        args=(client, pb_ids, server_base, external_url, args.refresh_interval),
         daemon=True,
     )
     t.start()
