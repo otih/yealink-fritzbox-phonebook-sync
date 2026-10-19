@@ -1,0 +1,151 @@
+---
+# Kubernetes manifests for yealink-fritzbox-phonebook-sync.
+#
+# Apply with:
+#   kubectl apply -f k8s.yaml
+#
+# Create the secret first (do NOT commit real credentials):
+#   kubectl create secret generic fritzbox-creds \
+#     --from-literal=FB_USER=phonebook \
+#     --from-literal=FB_PASSWORD='your-password'
+#
+# Adjust SYNC_SERVER_URL in the Deployment below to match the
+# Service name (or an external IP the Yealink can reach).
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: fritzbox-creds
+  labels:
+    app: yealink-fritzbox-phonebook-sync
+type: Opaque
+stringData:
+  FB_USER: "CHANGE_ME"
+  FB_PASSWORD: "CHANGE_ME"
+  SYNC_AUTH_USER: "CHANGE_ME"
+  SYNC_AUTH_PASSWORD: "CHANGE_ME"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: yealink-fritzbox-phonebook-sync
+  labels:
+    app: yealink-fritzbox-phonebook-sync
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: yealink-fritzbox-phonebook-sync
+  template:
+    metadata:
+      labels:
+        app: yealink-fritzbox-phonebook-sync
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: yealink-fritzbox-phonebook-sync
+          image: yealink-fritzbox-phonebook-sync:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+          env:
+            - name: FB_HOST
+              value: "fritz.box"
+            - name: FB_PORT
+              value: "49000"
+            - name: FB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: fritzbox-creds
+                  key: FB_USER
+            - name: FB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: fritzbox-creds
+                  key: FB_PASSWORD
+            - name: FB_PHONEBOOK_ID
+              value: "1"
+            - name: SYNC_LISTEN_PORT
+              value: "8080"
+            - name: SYNC_REFRESH_INTERVAL
+              value: "3600"
+            # The URL the Yealink phone uses to reach this server.
+            # If the phone is on the same cluster network, use the Service name.
+            # If the phone is external, use an externally reachable IP/hostname.
+            - name: SYNC_SERVER_URL
+              value: "http://yealink-fritzbox-phonebook-sync.default.svc.cluster.local:8080"
+            - name: SYNC_AUTH_USER
+              valueFrom:
+                secretKeyRef:
+                  name: fritzbox-creds
+                  key: SYNC_AUTH_USER
+            - name: SYNC_AUTH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: fritzbox-creds
+                  key: SYNC_AUTH_PASSWORD
+          # Mirror the Docker hardening from docker-compose.yml
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop:
+                - ALL
+          # K8s-managed probes (Dockerfile HEALTHCHECK is ignored by K8s)
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Mi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: yealink-fritzbox-phonebook-sync
+  labels:
+    app: yealink-fritzbox-phonebook-sync
+spec:
+  type: ClusterIP
+  selector:
+    app: yealink-fritzbox-phonebook-sync
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP

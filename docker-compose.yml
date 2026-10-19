@@ -1,0 +1,32 @@
+services:
+  yealink-fritzbox-phonebook-sync:
+    build: .
+    restart: unless-stopped
+    # Use host networking so the container can reach the Fritzbox
+    # (fritz.box resolves via IPv6, which Docker bridge doesn't route).
+    # The listen port is directly on the host — no port mapping needed.
+    network_mode: host
+    environment:
+      FB_HOST: ${FB_HOST:-fritz.box}
+      FB_PORT: ${FB_PORT:-49000}
+      FB_USER: ${FB_USER:?FB_USER must be set in .env}
+      FB_PASSWORD: ${FB_PASSWORD:?FB_PASSWORD must be set in .env}
+      FB_PHONEBOOK_ID: ${FB_PHONEBOOK_ID:-}
+      SYNC_LISTEN_PORT: ${SYNC_LISTEN_PORT:-8080}
+      SYNC_REFRESH_INTERVAL: ${SYNC_REFRESH_INTERVAL:-3600}
+      SYNC_SERVER_URL: ${SYNC_SERVER_URL:?SYNC_SERVER_URL must be set in .env}
+      SYNC_AUTH_USER: ${SYNC_AUTH_USER:-}
+      SYNC_AUTH_PASSWORD: ${SYNC_AUTH_PASSWORD:-}
+    # Read-only root filesystem for defense in depth.
+    # The app needs no writable paths — all state is in-memory.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # If the Fritzbox is on a different network/host reachable via the
+    # host's network stack, use network_mode: host instead of ports:
+    #
+    # network_mode: host
