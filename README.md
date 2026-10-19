@@ -45,28 +45,20 @@ The server maintains an in-memory cache of the converted phonebook. The Yealink 
 
 ### Option A: Docker (recommended)
 
-**Pull the pre-built image** (built automatically via GitHub Actions):
+The easiest way to run the server is with Docker Compose. The pre-built image is published to GitHub Container Registry automatically on every push to `main`.
 
 ```bash
-docker pull ghcr.io/otih/yealink-fritzbox-phonebook-sync:latest
-```
+# Clone the repo (you need the docker-compose.yml and .env.example)
+git clone https://github.com/otih/yealink-fritzbox-phonebook-sync.git
+cd yealink-fritzbox-phonebook-sync
 
-Then create a `docker-compose.yml` (or use the one from this repo) and a `.env` file, and start:
-
-```bash
-docker compose up -d
-```
-
-**Or build from source:**
-
-```bash
-git clone https://github.com/otih/yealink-fritzbox-phonebook-sync.git && cd yealink-fritzbox-phonebook-sync
+# Configure
 cp .env.example .env
 # Edit .env — set FB_USER, FB_PASSWORD, SYNC_SERVER_URL, SYNC_AUTH_USER, SYNC_AUTH_PASSWORD
 nano .env
 
-# Build and start
-docker compose up -d --build
+# Pull the pre-built image and start
+docker compose up -d
 
 # Check logs
 docker compose logs -f
@@ -74,6 +66,8 @@ docker compose logs -f
 # Stop (graceful, ~1-2s)
 docker compose down
 ```
+
+The `docker-compose.yml` uses `ghcr.io/otih/yealink-fritzbox-phonebook-sync:latest` by default. To build from source instead (e.g. for local development), replace `image:` with `build: .` in the compose file and run `docker compose up -d --build`.
 
 ### Option B: Kubernetes
 
