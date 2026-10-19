@@ -49,8 +49,8 @@ spec:
         fsGroup: 1000
       containers:
         - name: yealink-fritzbox-phonebook-sync
-          image: yealink-fritzbox-phonebook-sync:latest
-          imagePullPolicy: IfNotPresent
+          image: ghcr.io/otih/yealink-fritzbox-phonebook-sync:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8080
               name: http

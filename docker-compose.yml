@@ -1,6 +1,8 @@
 services:
   yealink-fritzbox-phonebook-sync:
-    build: .
+    # Pre-built image from GitHub Container Registry.
+    # To build from source instead, replace with: build: .
+    image: ghcr.io/otih/yealink-fritzbox-phonebook-sync:latest
     restart: unless-stopped
     # Use host networking so the container can reach the Fritzbox
     # (fritz.box resolves via IPv6, which Docker bridge doesn't route).

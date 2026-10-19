@@ -78,9 +78,6 @@ docker compose down
 ### Option B: Kubernetes
 
 ```bash
-# Build and load the image (or push to your registry)
-docker build -t yealink-fritzbox-phonebook-sync:latest .
-
 # Create the secret with your Fritzbox credentials and phonebook auth
 kubectl create secret generic fritzbox-creds \
   --from-literal=FB_USER=phonebook \
@@ -89,6 +86,7 @@ kubectl create secret generic fritzbox-creds \
   --from-literal=SYNC_AUTH_PASSWORD='your-auth-password'
 
 # Adjust SYNC_SERVER_URL in k8s.yaml, then deploy
+# (image is pulled automatically from GHCR — no build needed)
 kubectl apply -f k8s.yaml
 
 # Check status
