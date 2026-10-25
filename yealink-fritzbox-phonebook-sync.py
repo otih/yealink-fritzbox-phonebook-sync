@@ -64,6 +64,11 @@ from urllib.request import urlopen
 
 logger = logging.getLogger("fritz-pb-sync")
 
+# App version: the single source of truth for humans (startup log),
+# the /metrics endpoint (yfps_build_info) and the release process.
+# Bump on every release (keep in sync with CHANGELOG.md and git tags).
+APP_VERSION = "0.5.0"
+
 
 class _RateLimiter:
     """Per-IP failure rate limiter for Basic Auth (defense in depth).
@@ -725,6 +730,9 @@ class PhonebookHandler(BaseHTTPRequestHandler):
             with state.lock:
                 age = int(time.time() - state.last_sync) if state.last_sync else -1
                 lines = [
+                    "# HELP yfps_build_info Build/version information (constant 1)",
+                    "# TYPE yfps_build_info gauge",
+                    'yfps_build_info{version="%s"} 1' % APP_VERSION,
                     "# HELP yfps_sync_success_total Number of successful sync cycles",
                     "# TYPE yfps_sync_success_total counter",
                     "yfps_sync_success_total %d" % state.sync_successes,
@@ -1072,6 +1080,7 @@ def main() -> None:
     # Restrict via container network policy or a reverse proxy if needed.
     srv = _SERVER_CLASS(("0.0.0.0", args.listen_port), PhonebookHandler)  # noqa: S104
     logger.info("=" * 60)
+    logger.info("yealink-fritzbox-phonebook-sync v%s starting", APP_VERSION)
     logger.info("Listening on http://0.0.0.0:%d", args.listen_port)
     logger.info("Yealink Remote Phonebook URL: %s/menu.xml", args.server_url.rstrip("/"))
     logger.info("Health check: %s/health", args.server_url.rstrip("/"))

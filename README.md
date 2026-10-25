@@ -237,7 +237,7 @@ Invalid values (port ranges, non-numeric phonebook IDs, non-positive refresh int
 | `/menu.xml` | YealinkIPPhoneMenu — lists all phonebooks as selectable entries |
 | `/contacts/<id>.xml` | YealinkIPPhoneDirectory — contacts for a specific phonebook |
 | `/health` | JSON status: `{"status":"ok","contacts":193,"last_sync_age_sec":42}` |
-| `/metrics` | Prometheus metrics: sync success/failure counters, last-sync age, contact and phonebook counts |
+| `/metrics` | Prometheus metrics: `yfps_build_info` (version), sync success/failure counters, last-sync age, contact and phonebook counts. See [Metrics & Alerting](https://otih.github.io/yealink-fritzbox-phonebook-sync/metrics/) for the reference, Prometheus scrape config and suggested alert rules |
 
 `/health` and `/metrics` are served without authentication (operational data
 only, no contact details); all phonebook endpoints require HTTP Basic Auth
