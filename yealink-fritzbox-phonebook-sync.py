@@ -40,10 +40,14 @@ Then on the Yealink web UI → Directory → Remote Phone Book:
 See README.md for systemd deployment instructions.
 """
 
+from __future__ import annotations
+
 import argparse
 import base64
 import hashlib
 import hmac
+import ipaddress
+import json
 import logging
 import os
 import random
@@ -54,10 +58,89 @@ import sys
 import threading
 import time
 import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.request import urlopen
 
 logger = logging.getLogger("fritz-pb-sync")
+
+
+class _RateLimiter:
+    """Per-IP failure rate limiter for Basic Auth (defense in depth).
+
+    Allows max_failures failed attempts per IP within window_seconds; a
+    blocked IP is unblocked when the window expires or a successful auth
+    resets it. Thread-safe.
+    """
+
+    def __init__(self, max_failures: int = 5, window_seconds: float = 60.0) -> None:
+        self.max_failures = max_failures
+        self.window_seconds = window_seconds
+        self._failures: dict[str, list[float]] = {}
+        self._lock = threading.Lock()
+
+    def record_failure(self, ip: str) -> None:
+        with self._lock:
+            now = time.monotonic()
+            self._failures.setdefault(ip, []).append(now)
+            # Drop expired entries while we are here
+            self._failures[ip] = [t for t in self._failures[ip] if now - t < self.window_seconds]
+
+    def record_success(self, ip: str) -> None:
+        with self._lock:
+            self._failures.pop(ip, None)
+
+    def is_allowed(self, ip: str) -> bool:
+        with self._lock:
+            now = time.monotonic()
+            timestamps = self._failures.get(ip, [])
+            timestamps = [t for t in timestamps if now - t < self.window_seconds]
+            if timestamps:
+                self._failures[ip] = timestamps
+            else:
+                self._failures.pop(ip, None)
+            return len(timestamps) < self.max_failures
+
+
+class _IpAllowlist:
+    """Optional IP allowlist (SYNC_ALLOWED_IPS).
+
+    An empty/unset list allows everyone. Entries can be single IPs or
+    CIDR ranges, comma-separated.
+    """
+
+    def __init__(self, spec: str) -> None:
+        self._networks = []
+        if spec and spec.strip():
+            for part in spec.split(","):
+                part = part.strip()
+                if part:
+                    self._networks.append(ipaddress.ip_network(part, strict=False))
+
+    def is_allowed(self, ip: str) -> bool:
+        if not self._networks:
+            return True
+        addr = ipaddress.ip_address(ip)
+        return any(addr in net for net in self._networks)
+
+
+class _JsonLogFormatter(logging.Formatter):
+    """Minimal JSON line formatter for log aggregation (SYNC_LOG_FORMAT=json).
+
+    One JSON object per line: timestamp, level, logger, message.
+    """
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
+            "ts": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "msg": record.getMessage(),
+        }
+        if record.exc_info:
+            payload["exc"] = self.formatException(record.exc_info)
+        return json.dumps(payload)
+
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -78,19 +161,19 @@ CHALLENGE_RETRY_DELAY = 0.3
 # ---------------------------------------------------------------------------
 
 
-def _strip_ns(tag):
+def _strip_ns(tag: str) -> str:
     """Strip XML namespace: '{ns}element' → 'element'."""
     return tag.split("}", 1)[1] if "}" in tag else tag
 
 
-def _escape_xml(text):
+def _escape_xml(text: str) -> str:
     """Escape XML special characters."""
     return (
         text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
     )
 
 
-def _normalize_number(num):
+def _normalize_number(num: str) -> str:
     """Normalize a phone number for reliable Caller-ID matching.
 
     Removes formatting characters (spaces, dashes, slashes, parentheses,
@@ -111,7 +194,33 @@ def _normalize_number(num):
     return num
 
 
-# ---------------------------------------------------------------------------
+def _parse_log_level(value: str) -> str:
+    """Validate a log level name (SYNC_LOG_LEVEL); empty → INFO."""
+    if not value:
+        return "INFO"
+    level = value.upper()
+    if level not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
+        raise ValueError("Invalid log level %r (use DEBUG/INFO/WARNING/ERROR/CRITICAL)" % value)
+    return level
+
+
+def _validate_config(cfg: dict) -> None:
+    """Validate configuration values; raise ValueError with the offending key."""
+    if not (1 <= cfg["fritzbox_port"] <= 65535):
+        raise ValueError("fritzbox_port must be 1-65535, got %d" % cfg["fritzbox_port"])
+    if not (1 <= cfg["listen_port"] <= 65535):
+        raise ValueError("listen_port must be 1-65535, got %d" % cfg["listen_port"])
+    if cfg["refresh_interval"] <= 0:
+        raise ValueError("refresh_interval must be positive, got %d" % cfg["refresh_interval"])
+    if cfg["phonebook_id"]:
+        for part in cfg["phonebook_id"].split(","):
+            if not part.strip().isdigit():
+                raise ValueError(
+                    "phonebook_id must be comma-separated integers, got %r" % cfg["phonebook_id"]
+                )
+
+
+#
 # Fritzbox TR-064 SOAP client
 # ---------------------------------------------------------------------------
 
@@ -126,14 +235,14 @@ def _normalize_number(num):
 class FritzboxClient:
     """Minimal TR-064 SOAP client for phonebook retrieval."""
 
-    def __init__(self, host, port, user, password):
+    def __init__(self, host: str, port: int, user: str, password: str) -> None:
         self.host = host
         self.port = port
         self.user = user
         self.password = password
         self.control_path = ONT_CONTROL_PATH
 
-    def _build_digest_auth(self, challenge, uri):
+    def _build_digest_auth(self, challenge: str, uri: str) -> str:
         """Parse a WWW-Authenticate digest challenge and build the
         Authorization header. Raises ValueError on malformed challenges."""
         realm_m = re.search(r'realm="([^"]*)"', challenge)
@@ -169,7 +278,7 @@ class FritzboxClient:
                 f'nonce="{nonce}", uri="{uri}", response="{response}"'
             )
 
-    def _soap(self, action, inner_xml=""):
+    def _soap(self, action: str, inner_xml: str = "") -> str:
         """Send a SOAP request to the X_AVM-DE_OnTel service.
 
         The Fritzbox requires HTTP Digest auth for TR-064. Python's
@@ -244,7 +353,7 @@ class FritzboxClient:
             raise RuntimeError("SOAP %s failed: HTTP %d" % (action, resp["status"]))
         return resp["body"]
 
-    def _raw_post(self, path, body, headers):
+    def _raw_post(self, path: str, body: bytes, headers: dict[str, str]) -> dict:
         """Send an HTTP POST via raw socket, return parsed response.
 
         Ensures the socket is always closed, even on error.
@@ -311,7 +420,7 @@ class FritzboxClient:
 
         return {"status": status, "headers": resp_headers, "body": resp_body}
 
-    def get_phonebook_ids(self):
+    def get_phonebook_ids(self) -> list[int]:
         """Return list of phonebook IDs available on the Fritzbox."""
         raw = self._soap("GetPhonebookList")
         root = ET.fromstring(raw)  # noqa: S314 — trusted Fritzbox source, see security note
@@ -321,7 +430,7 @@ class FritzboxClient:
                 return [int(i) for i in ids_str.split(",") if i.strip()]
         raise ValueError("NewPhonebookList not found in SOAP response")
 
-    def get_phonebook_url(self, phonebook_id):
+    def get_phonebook_url(self, phonebook_id: int) -> str:
         """Return the download URL for a specific phonebook ID."""
         inner = "<NewPhonebookId>%d</NewPhonebookId>" % phonebook_id
         raw = self._soap("GetPhonebook", inner)
@@ -331,7 +440,7 @@ class FritzboxClient:
                 return (elem.text or "").strip()
         raise ValueError("NewPhonebookURL not found in SOAP response")
 
-    def fetch_phonebook(self, phonebook_id):
+    def fetch_phonebook(self, phonebook_id: int) -> bytes:
         """Download raw Fritzbox phonebook XML (bytes) for one phonebook ID.
 
         The URL comes from the Fritzbox SOAP response; only http/https
@@ -347,7 +456,7 @@ class FritzboxClient:
         resp = urlopen(url, timeout=DOWNLOAD_TIMEOUT)  # noqa: S310 — scheme whitelisted above
         return resp.read()
 
-    def fetch_all_phonebooks(self, ids):
+    def fetch_all_phonebooks(self, ids: list[int]) -> bytes:
         """Download multiple phonebooks. Returns concatenated bytes.
 
         Stops on first failure — atomicity over partial results.
@@ -371,7 +480,7 @@ TYPE_LABELS = {
 }
 
 
-def convert_single_phonebook(fritzbox_xml_bytes):
+def convert_single_phonebook(fritzbox_xml_bytes: bytes) -> tuple[str, str, int]:
     """
     Convert a single Fritzbox phonebook XML to Yealink DirectoryEntry format.
 
@@ -458,7 +567,7 @@ def convert_single_phonebook(fritzbox_xml_bytes):
     return pb_name, contacts_str, count
 
 
-def build_menu_xml(phonebooks, server_base):
+def build_menu_xml(phonebooks: list[dict], server_base: str) -> str:
     """
     Build the YealinkIPPhoneMenu listing all phonebooks as selectable entries.
 
@@ -504,9 +613,12 @@ state = State()
 # HTTP Basic Auth credentials (set in main from env vars)
 auth_user = ""
 auth_pass = ""
+# Set in main(): rate limiter for auth failures, optional IP allowlist
+rate_limiter = _RateLimiter()
+ip_allowlist = _IpAllowlist("")
 
 
-def _placeholder_menu(server_base):
+def _placeholder_menu(server_base: str) -> str:
     """Empty menu served before the first successful sync."""
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -528,7 +640,7 @@ class PhonebookHandler(BaseHTTPRequestHandler):
     # Yealink phones expect HTTP/1.1; BaseHTTPRequestHandler defaults to 1.0
     protocol_version = "HTTP/1.1"
 
-    def _check_auth(self):
+    def _check_auth(self) -> bool:
         """Validate HTTP Basic Auth. Returns True if authorized or auth disabled."""
         if not auth_user:
             return True
@@ -542,19 +654,36 @@ class PhonebookHandler(BaseHTTPRequestHandler):
         except Exception:
             return False
 
-    def _require_auth(self):
-        """Send 401 challenge if auth is enabled and not satisfied."""
+    def _require_auth(self) -> bool:
+        """Enforce IP allowlist and Basic Auth with rate limiting.
+
+        Order: allowlist first (cheap, no parsing), then rate limit,
+        then credentials. Returns True if the request may proceed.
+        """
+        client_ip = self.client_address[0]
+        if not ip_allowlist.is_allowed(client_ip):
+            logger.warning("Blocked by IP allowlist: %s", client_ip)
+            self.send_error(403)
+            return False
         if not auth_user:
             return True
+        if not rate_limiter.is_allowed(client_ip):
+            logger.warning("Rate limit exceeded for %s", client_ip)
+            self.send_response(429)
+            self.send_header("Connection", "close")
+            self.end_headers()
+            return False
         if self._check_auth():
+            rate_limiter.record_success(client_ip)
             return True
+        rate_limiter.record_failure(client_ip)
         self.send_response(401)
         self.send_header("WWW-Authenticate", 'Basic realm="Phonebook"')
         self.send_header("Connection", "close")
         self.end_headers()
         return False
 
-    def do_GET(self):
+    def do_GET(self) -> None:
         # /health is always open (needed for Docker HEALTHCHECK, monitoring)
         if self.path == "/health":
             with state.lock:
@@ -622,7 +751,7 @@ class PhonebookHandler(BaseHTTPRequestHandler):
         else:
             self.send_error(404)
 
-    def _serve(self, content, content_type="application/xml; charset=utf-8"):
+    def _serve(self, content: str, content_type: str = "application/xml; charset=utf-8") -> None:
         body = content.encode("utf-8")
         self.send_response_only(200)
         self.send_header("Content-Type", content_type)
@@ -638,7 +767,7 @@ class PhonebookHandler(BaseHTTPRequestHandler):
             len(body),
         )
 
-    def log_message(self, fmt, *args):
+    def log_message(self, fmt: str, *args: object) -> None:
         # Catch 401/404 and other non-200 responses that go through send_error/send_response
         logger.info("%s - %s", self.client_address[0], fmt % args)
 
@@ -650,7 +779,7 @@ class PhonebookHandler(BaseHTTPRequestHandler):
 BACKOFF_BASE_SECONDS = 60
 
 
-def _backoff_delay(consecutive_failures, refresh_interval):
+def _backoff_delay(consecutive_failures: int, refresh_interval: int) -> int:
     """Exponential retry delay after failed syncs.
 
     60s, 120s, 240s, ... capped at the regular refresh interval, so a
@@ -661,7 +790,9 @@ def _backoff_delay(consecutive_failures, refresh_interval):
     return min(delay, refresh_interval)
 
 
-def sync_once(client, phonebook_ids, server_base, external_url):
+def sync_once(
+    client: FritzboxClient, phonebook_ids: list[int], server_base: str, external_url: str
+) -> None:
     """Perform one sync cycle. Raises on failure — caller handles retries.
 
     Fetches each phonebook individually, converts it, and builds a menu
@@ -701,7 +832,13 @@ def sync_once(client, phonebook_ids, server_base, external_url):
     logger.info("Sync complete: %d phonebooks, %d total contacts", len(pb_meta), total)
 
 
-def sync_loop(client, phonebook_ids, server_base, external_url, refresh_interval):
+def sync_loop(
+    client: FritzboxClient,
+    phonebook_ids: list[int],
+    server_base: str,
+    external_url: str,
+    refresh_interval: int,
+) -> None:
     """Background thread: periodic sync with exponential backoff on failure.
 
     After a failed sync the retry delay grows (60s, 120s, 240s, ...) capped
@@ -742,7 +879,7 @@ def sync_loop(client, phonebook_ids, server_base, external_url, refresh_interval
 # ---------------------------------------------------------------------------
 
 
-def main():
+def main() -> None:
     p = argparse.ArgumentParser(
         description="Fritzbox → Yealink phonebook sync server",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -778,12 +915,54 @@ def main():
         default=os.getenv("SYNC_AUTH_PASSWORD", ""),
         help="HTTP Basic Auth password for phonebook access",
     )
+    p.add_argument(
+        "--log-level",
+        default=os.getenv("SYNC_LOG_LEVEL", "INFO"),
+        help="Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL (default: INFO)",
+    )
+    p.add_argument(
+        "--log-format",
+        default=os.getenv("SYNC_LOG_FORMAT", "text"),
+        help="Log format: text or json (default: text)",
+    )
+    p.add_argument(
+        "--allowed-ips",
+        default=os.getenv("SYNC_ALLOWED_IPS", ""),
+        help="Comma-separated IPs or CIDR ranges allowed to access the phonebook "
+        "(empty = allow all, default)",
+    )
     args = p.parse_args()
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)-5s %(name)s: %(message)s",
-    )
+    try:
+        log_level = _parse_log_level(args.log_level)
+    except ValueError as exc:
+        print("Configuration error: %s" % exc, file=sys.stderr)
+        sys.exit(1)
+
+    if args.log_format.lower() == "json":
+        formatter: logging.Formatter = _JsonLogFormatter()
+    else:
+        formatter = logging.Formatter(
+            "%(asctime)s %(levelname)-5s %(name)s: %(message)s",
+        )
+    logging.basicConfig(level=log_level, handlers=[logging.StreamHandler(sys.stdout)])
+    logging.root.handlers[0].setFormatter(formatter)
+
+    # Fail fast on invalid configuration instead of dying at runtime.
+    try:
+        _validate_config(
+            {
+                "fritzbox_host": args.fritzbox_host,
+                "fritzbox_port": args.fritzbox_port,
+                "listen_port": args.listen_port,
+                "refresh_interval": args.refresh_interval,
+                "server_url": args.server_url,
+                "phonebook_id": args.phonebook_id,
+            }
+        )
+    except ValueError as exc:
+        logger.error("Configuration error: %s", exc)
+        sys.exit(1)
 
     if not args.fritzbox_user or not args.fritzbox_password:
         logger.error("Fritzbox user and password required.")
@@ -805,9 +984,16 @@ def main():
     external_url = server_base
 
     # Set HTTP Basic Auth credentials globally for the handler
-    global auth_user, auth_pass
+    global auth_user, auth_pass, ip_allowlist
     auth_user = args.auth_user
     auth_pass = args.auth_password
+    try:
+        ip_allowlist = _IpAllowlist(args.allowed_ips)
+    except ValueError as exc:
+        logger.error("Invalid SYNC_ALLOWED_IPS value: %s", exc)
+        sys.exit(1)
+    if args.allowed_ips:
+        logger.info("IP allowlist enabled: %s", args.allowed_ips)
     if auth_user:
         logger.info("HTTP Basic Auth enabled (user: %s)", auth_user)
         # Embed credentials in the external URL for the phone
@@ -875,7 +1061,7 @@ def main():
     # srv.shutdown() must run in a separate thread — calling it from the
     # signal handler (which interrupts serve_forever's poll loop) would
     # deadlock, since shutdown() waits for serve_forever() to return.
-    def _shutdown(signum, frame):
+    def _shutdown(signum: int, frame: object) -> None:
         logger.info("Received signal %d, shutting down...", signum)
         threading.Thread(target=srv.shutdown, daemon=True).start()
 
