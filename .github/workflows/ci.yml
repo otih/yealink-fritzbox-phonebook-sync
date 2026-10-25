@@ -76,7 +76,10 @@ jobs:
   docker:
     name: Docker build & push
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    # E2E is a GATE for publishing: the docker job must not push until the
+    # container smoke test passed (v0.3.0 proved the hole — its E2E failed
+    # on the auth check while the image still got published).
+    needs: [lint, test, e2e]
     permissions:
       contents: read
       packages: write
