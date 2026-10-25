@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Phone-side fetch metrics:** `yfps_phonebook_fetch_total` (counter),
+  `yfps_phonebook_fetch_last_timestamp_seconds` and
+  `yfps_phonebook_fetch_age_seconds` (gauges) track when a phone last
+  downloaded a phonebook (`/menu.xml` or `/contacts/<id>.xml`) — the
+  phone-side mirror of the Fritzbox-side sync metrics. Alert rule
+  `PhonebookNotFetchedByPhone` documented: a growing fetch age while the
+  server is healthy means the phone stopped polling.
+
 ## [0.6.0] - 2026-10-25
 
 ### Added
