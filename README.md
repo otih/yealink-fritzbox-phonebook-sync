@@ -1,5 +1,7 @@
 # Yealink Fritzbox Phonebook Sync
 
+![CI](https://github.com/otih/yealink-fritzbox-phonebook-sync/actions/workflows/ci.yml/badge.svg)
+
 A lightweight server that bridges the gap between Fritzbox phonebooks and Yealink IP phones. It fetches phonebooks from a Fritzbox via its TR-064 SOAP interface, converts them to Yealink's remote-phonebook XML format, and serves them over HTTP for the phone to poll.
 
 **Tested with:** Yealink AX83H Wi-Fi handset × Fritzbox 7530 AX (FritzOS 8.25), connected via Deutsche Giganetz SIP trunk. Should work with any Yealink phone supporting remote phonebooks and any Fritzbox with TR-064 enabled.
@@ -208,6 +210,11 @@ Without auth, anyone on the same network can read the full phonebook. **Setting 
 | `/menu.xml` | YealinkIPPhoneMenu — lists all phonebooks as selectable entries |
 | `/contacts/<id>.xml` | YealinkIPPhoneDirectory — contacts for a specific phonebook |
 | `/health` | JSON status: `{"status":"ok","contacts":193,"last_sync_age_sec":42}` |
+| `/metrics` | Prometheus metrics: sync success/failure counters, last-sync age, contact and phonebook counts |
+
+`/health` and `/metrics` are served without authentication (operational data
+only, no contact details); all phonebook endpoints require HTTP Basic Auth
+when configured.
 
 ## How it works
 

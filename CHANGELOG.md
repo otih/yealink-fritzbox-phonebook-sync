@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Exponential backoff on sync failures:** after a failed Fritzbox sync the
+  retry delay now grows (60s, 120s, 240s, …) capped at the refresh interval;
+  a successful sync resets it. A Fritzbox reboot recovers within minutes
+  instead of after the full hour.
+- **Prometheus metrics endpoint (`/metrics`):** sync success/failure counters,
+  last-sync timestamp and age, contact and phonebook counts in text
+  exposition format. Served without auth (operational data only).
+- **Phone-number normalization:** formatting characters (spaces, dashes,
+  slashes, parentheses, dots) are stripped from phone numbers before serving,
+  and the German "(0)" trunk-prefix notation inside international numbers is
+  resolved (+49 (0)170… → +49170…) — improves exact Caller-ID matching on
+  the phone. SIP URIs are left untouched.
+- **HTTP handler test suite:** 12 tests exercising the real HTTP server —
+  auth enforcement (correct/wrong/malformed credentials), URL routing
+  (404s, numeric contact IDs), and the metrics endpoint.
+- **E2E smoke test in CI:** builds the image, boots a container against an
+  unreachable Fritzbox, and verifies /health, /metrics, auth rejection, and
+  graceful SIGTERM shutdown — catches Dockerfile and entrypoint regressions
+  the unit tests cannot see.
+- **Multi-arch images:** CI now publishes linux/amd64 and linux/arm64
+  (Raspberry Pi and other ARM hosts).
+- **Contributing guidelines (`CONTRIBUTING.md`)** and **issue templates**
+  (bug report, feature request).
+- **Code of Conduct for AI-assisted development (`CODE_OF_CONDUCT.md`):**
+  binds human and AI contributors alike — honesty about provenance,
+  verification before claiming success, no undocumented security
+  exceptions, human oversight for merges and releases.
+- **CI status badge** in the README.
+
+### Changed
+
+- **Backwards-compatible only:** no env var, CLI flag, XML output, or
+  endpoint changes; `/metrics` is a pure addition.
+
 ## [0.2.1] - 2026-10-25
 
 ### Changed
