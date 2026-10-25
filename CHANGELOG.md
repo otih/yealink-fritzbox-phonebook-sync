@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **PR-only mode:** `main` is protected by a GitHub ruleset (block force
+  pushes, restrict deletions, require the 6 CI status checks on every
+  ref update). Direct pushes are no longer possible; every change lands
+  via pull request. The weekly rebuild workflow no longer commits the
+  base-image digest to `main` — it reads the digest from the OCI label
+  on the published image, and on drift re-runs the full CI pipeline as
+  a called workflow (same lint/tests/E2E/CVE gates, then publish). The
+  `.github/base-image-digest` file is gone.
+- **CVE gate scans the actual build:** the Docker job now builds a
+  dedicated `yfps/ci:scan-target` tag and points SBOM generation and
+  the Trivy gate at it. Previously the gate could scan the stale
+  registry `:latest` after base-image drift (and on PR runs the local
+  tag shadowed the registry image), silently verifying old bits.
+
+### Fixed
+
+- **Base-digest label:** the double `sha256:` prefix in
+  `org.opencontainers.image.base.digest` (published images carried
+  `sha256:sha256:…`) is fixed at the source in CI; the rebuild
+  workflow normalizes old labels when comparing digests.
+
 ## [0.4.1] - 2026-10-25
 
 ### Added

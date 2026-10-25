@@ -272,10 +272,12 @@ Three layers keep the published image safe around the clock:
    re-scanned against the current CVE database; findings open a labeled
    tracking issue automatically and the run goes red.
 3. **Weekly rebuild** — Mondays 04:30 UTC (after the scan) the workflow
-   detects whether the base image digest moved; if so it commits the new
-   digest, which triggers the full CI pipeline (tests + CVE gate) and
-   publishes fresh `:main` / `:latest` images. Version releases remain a
-   human/AI-agent decision.
+   compares the base-image digest recorded on the published `:latest`
+   image (OCI label `org.opencontainers.image.base.digest`) against the
+   current upstream `python:3.15-alpine` digest; on drift it re-runs the
+   full CI pipeline as a called workflow — no commit to `main` involved —
+   publishing fresh `:main` / `:latest` images if all gates pass. Version
+   releases remain a human/AI-agent decision.
 
 **Dependabot** opens update PRs weekly for GitHub Actions versions and the
 Docker base image; every PR must pass the full CI (lint, types, tests,
