@@ -13,6 +13,16 @@ on:
   # :main/:latest images — no commit to main needed (PR-only mode).
   workflow_call:
 
+# Serialize runs per ref and event: rapid successive merges to main
+# previously raced their registry pushes — a superseded run finishing
+# last overwrote :latest with an OLDER build (observed 2026-10-25).
+# cancel-in-progress drops superseded runs before they publish; tag
+# pushes are unique refs, so releases never cancel each other, and
+# workflow_call runs (rebuild) are isolated from push runs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
