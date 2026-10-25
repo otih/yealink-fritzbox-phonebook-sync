@@ -49,6 +49,24 @@ Both tools install with `pip install ruff pytest`.
 - The subject line states *what*; the body explains *why*.
 - One logical change per commit.
 
+## Branch names
+
+Branches follow the Conventional-Branches scheme — the type prefix mirrors
+the commit prefix, so branch, commits, and PR title tell the same story:
+
+```
+<type>/<issue-number>-<slug>     when an issue exists
+<type>/<slug>                    otherwise
+```
+
+- **Types:** `feat`, `fix`, `docs`, `ci`, `test`, `refactor`, `chore`,
+  `release` — identical to the commit prefixes (plus `release`).
+- **Slug:** lowercase, hyphenated, short but descriptive
+  (`fix/14-rate-limiter-hygiene`, `feat/threading-server`,
+  `ci/pr-only-mode`, `release/v0.5.0`).
+- A PR references its issue in the description (`Fixes #123`) — the number
+  in the branch name is a reading aid, not a substitute.
+
 ## Versioning concept
 
 This project follows [Semantic Versioning](https://semver.org/) with these
