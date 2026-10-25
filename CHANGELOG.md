@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Version in the startup log:** the server logs
+  `yealink-fritzbox-phonebook-sync v0.5.0 starting` as its first banner
+  line — `docker logs` now answers "which version is running?" at a
+  glance. The version lives in a single `APP_VERSION` constant.
+- **`yfps_build_info{version="…"}` metric:** the running version is
+  exposed on `/metrics` (constant gauge `1`), so the deployed version is
+  also visible in Prometheus/Grafana.
+- **Metrics & Alerting documentation:** new docs page with the metric
+  reference, a Prometheus scrape config, suggested alert rules (stale
+  phonebook, persistent sync failures, server down) and an Alertmanager
+  routing example.
+
 ## [0.5.0] - 2026-10-25
 
 ### Changed

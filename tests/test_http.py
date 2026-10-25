@@ -145,3 +145,10 @@ class TestRouting:
         assert status == 200
         assert "yfps_sync_success_total" in body
         assert "# TYPE yfps_sync_success_total counter" in body
+
+    def test_metrics_exposes_build_info(self, server):
+        base, _ = server
+        status, body = _get(base + "/metrics")
+        assert status == 200
+        assert "# TYPE yfps_build_info gauge" in body
+        assert 'yfps_build_info{version="%s"} 1' % yfps.APP_VERSION in body
