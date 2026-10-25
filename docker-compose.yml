@@ -1,8 +1,10 @@
 services:
   yealink-fritzbox-phonebook-sync:
     # Pre-built image from GitHub Container Registry.
-    # To build from source instead, replace with: build: .
-    image: ghcr.io/otih/yealink-fritzbox-phonebook-sync:latest
+    # Pin to a concrete version for reproducible deployments; `latest`
+    # pulls the newest release. To build from source instead, replace
+    # image: with: build: .
+    image: ghcr.io/otih/yealink-fritzbox-phonebook-sync:0.3.2
     restart: unless-stopped
     # Use host networking so the container can reach the Fritzbox
     # (fritz.box resolves via IPv6, which Docker bridge doesn't route).
@@ -19,6 +21,9 @@ services:
       SYNC_SERVER_URL: ${SYNC_SERVER_URL:?SYNC_SERVER_URL must be set in .env}
       SYNC_AUTH_USER: ${SYNC_AUTH_USER:-}
       SYNC_AUTH_PASSWORD: ${SYNC_AUTH_PASSWORD:-}
+      SYNC_LOG_LEVEL: ${SYNC_LOG_LEVEL:-INFO}
+      SYNC_LOG_FORMAT: ${SYNC_LOG_FORMAT:-text}
+      SYNC_ALLOWED_IPS: ${SYNC_ALLOWED_IPS:-}
     # Read-only root filesystem for defense in depth.
     # The app needs no writable paths — all state is in-memory.
     read_only: true

@@ -1,6 +1,7 @@
 # Yealink Fritzbox Phonebook Sync
 
 ![CI](https://github.com/otih/yealink-fritzbox-phonebook-sync/actions/workflows/ci.yml/badge.svg)
+[![Docs](https://img.shields.io/badge/docs-github%20pages-blue)](https://otih.github.io/yealink-fritzbox-phonebook-sync/)
 
 A lightweight server that bridges the gap between Fritzbox phonebooks and Yealink IP phones. It fetches phonebooks from a Fritzbox via its TR-064 SOAP interface, converts them to Yealink's remote-phonebook XML format, and serves them over HTTP for the phone to poll.
 
@@ -49,27 +50,32 @@ The server maintains an in-memory cache of the converted phonebook. The Yealink 
 
 The easiest way to run the server is with Docker Compose. The pre-built image is published to GitHub Container Registry automatically on every push to `main`.
 
-```bash
-# Clone the repo (you need the docker-compose.yml and .env.example)
-git clone https://github.com/otih/yealink-fritzbox-phonebook-sync.git
-cd yealink-fritzbox-phonebook-sync
+**Pull-only setup (no clone needed):** download just the two files you need and start:
 
-# Configure
-cp .env.example .env
+```bash
+mkdir phonebook-sync && cd phonebook-sync
+BASE=https://raw.githubusercontent.com/otih/yealink-fritzbox-phonebook-sync/main
+curl -sO $BASE/docker-compose.yml
+curl -sO $BASE/.env.example && mv .env.example .env
 # Edit .env — set FB_USER, FB_PASSWORD, SYNC_SERVER_URL, SYNC_AUTH_USER, SYNC_AUTH_PASSWORD
 nano .env
 
-# Pull the pre-built image and start
-docker compose up -d
-
-# Check logs
+docker compose up -d          # pulls ghcr.io/otih/yealink-fritzbox-phonebook-sync:0.3.2
 docker compose logs -f
-
-# Stop (graceful, ~1-2s)
-docker compose down
+docker compose down           # stop (graceful, ~1-2s)
 ```
 
-The `docker-compose.yml` uses `ghcr.io/otih/yealink-fritzbox-phonebook-sync:latest` by default. To build from source instead (e.g. for local development), replace `image:` with `build: .` in the compose file and run `docker compose up -d --build`.
+**Or clone the repo** (needed for building from source):
+
+```bash
+git clone https://github.com/otih/yealink-fritzbox-phonebook-sync.git
+cd yealink-fritzbox-phonebook-sync
+cp .env.example .env
+nano .env
+docker compose up -d
+```
+
+The `docker-compose.yml` pins a concrete version by default (`0.3.2`) for reproducible deployments — switch to `latest` if you prefer automatic updates, or `build: .` to build from source.
 
 ### Option B: Kubernetes
 
@@ -178,6 +184,9 @@ All configuration is via environment variables. CLI flags override env vars but 
 | `SYNC_SERVER_URL` | *(required)* | URL the Yealink phone uses to reach this server |
 | `SYNC_AUTH_USER` | *(empty)* | HTTP Basic Auth username — set to protect the phonebook |
 | `SYNC_AUTH_PASSWORD` | *(empty)* | HTTP Basic Auth password |
+| `SYNC_ALLOWED_IPS` | *(empty)* | Optional allowlist: comma-separated IPs or CIDR ranges; empty = allow all |
+| `SYNC_LOG_LEVEL` | `INFO` | Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL |
+| `SYNC_LOG_FORMAT` | `text` | Log format: `text` or `json` (for log aggregation) |
 
 **Important:** `SYNC_SERVER_URL` must be the address the **phone** uses to reach the server — not `localhost` or `0.0.0.0`. For Docker, use the host's LAN IP. For Kubernetes, use the Service name or an externally reachable address.
 
@@ -202,6 +211,24 @@ On the Yealink phone, configure the same credentials. Depending on the model, th
    ```
 
 Without auth, anyone on the same network can read the full phonebook. **Setting auth is strongly recommended.**
+
+### IP allowlist (optional)
+
+Set `SYNC_ALLOWED_IPS` to restrict which clients may access the phonebook at all — single IPs or CIDR ranges, comma-separated:
+
+```bash
+SYNC_ALLOWED_IPS=192.168.1.0/24,10.0.0.5
+```
+
+Empty or unset (default) allows all clients. Blocked clients receive HTTP 403. The allowlist applies to all phonebook endpoints; `/health` and `/metrics` stay reachable (operational data only). Invalid values abort startup with a clear error.
+
+### Auth rate limiting (automatic)
+
+Failed Basic-Auth attempts are rate-limited per client IP: after 5 failures within 60 seconds, further attempts from that IP get HTTP 429 until the window expires. A successful authentication resets the counter. This is defense-in-depth for the (unlikely) case of brute-force attempts from the LAN.
+
+### Fail-fast configuration validation
+
+Invalid values (port ranges, non-numeric phonebook IDs, non-positive refresh intervals, unknown log levels, malformed allowlists) are rejected at startup with a clear error message instead of failing at runtime.
 
 ## HTTP endpoints
 
