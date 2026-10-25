@@ -12,3 +12,9 @@ __pycache__
 .venv
 venv
 node_modules
+site/
+.pytest_cache/
+.coverage
+docs/
+.github/
+mkdocs.yml

@@ -1,0 +1,14 @@
+site_name: yealink-fritzbox-phonebook-sync
+site_description: Fritzbox → Yealink phonebook sync server
+site_url: https://otih.github.io/yealink-fritzbox-phonebook-sync/
+repo_url: https://github.com/otih/yealink-fritzbox-phonebook-sync
+repo_name: otih/yealink-fritzbox-phonebook-sync
+
+theme:
+  name: mkdocs
+  # mkdocs (classic) keeps the build dependency-free on stdlib-ish setups;
+  # no material theme required — consistent with the zero-dependency philosophy.
+
+nav:
+  - Overview: index.md
+  - Configuration: configuration.md
