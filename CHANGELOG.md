@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Type annotations + mypy in CI:** full type coverage of the codebase,
+  statically checked in the lint job — catches integration bugs the tests
+  cannot see.
+- **Test coverage gate:** CI runs pytest with coverage and enforces a
+  minimum (currently 45%, the honest current level; the gate ratchets up
+  as coverage grows). Tests load the dash-named module via a clean
+  import name registered in `conftest.py`.
+- **Fail-fast configuration validation:** invalid ports, non-numeric
+  phonebook IDs, non-positive refresh intervals, and unknown log levels
+  abort startup with a clear error instead of failing at runtime.
+- **`SYNC_LOG_LEVEL`:** runtime-selectable log level (DEBUG, INFO,
+  WARNING, ERROR, CRITICAL) without rebuilding.
+- **`SYNC_LOG_FORMAT=json`:** one JSON object per line (timestamp, level,
+  logger, message, exception) for log aggregation.
+- **Auth rate limiting (automatic):** 5 failed Basic-Auth attempts per IP
+  within 60 seconds lead to HTTP 429; success resets the counter —
+  defense-in-depth against brute force from the LAN.
+- **Optional IP allowlist (`SYNC_ALLOWED_IPS`):** comma-separated IPs or
+  CIDR ranges; **empty/unset allows all clients** (fully backwards
+  compatible). Blocked clients receive HTTP 403; `/health` and `/metrics`
+  remain reachable.
+- **Pull-only quick start:** README shows a two-file setup (compose +
+  .env via curl) for users who do not want to clone the repo.
+- **Documentation website:** MkDocs-based GitHub Pages deployment
+  (overview + configuration reference) with a strict build in CI and a
+  docs badge in the README.
+
+### Changed
+
+- **docker-compose.yml now pins a concrete image version** (`0.3.2`)
+  instead of `latest` — reproducible deployments; switching to `latest`
+  or `build: .` remains documented.
+- **New optional env vars in compose/.env.example:** `SYNC_LOG_LEVEL`,
+  `SYNC_LOG_FORMAT`, `SYNC_ALLOWED_IPS`.
+
+### Security
+
+- All new endpoints/features reviewed with `ruff --select S,B` — clean;
+  no new exceptions were needed.
+
 ## [0.3.2] - 2026-10-25
 
 ### Fixed
