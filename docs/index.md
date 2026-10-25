@@ -36,3 +36,5 @@ contact source the Fritzbox supports works automatically.
 - **[Configuration](configuration.md)** — all environment variables
 - **[GitHub README](https://github.com/otih/yealink-fritzbox-phonebook-sync#readme)** — full documentation
 - **[CHANGELOG](https://github.com/otih/yealink-fritzbox-phonebook-sync/blob/main/CHANGELOG.md)** — release history
+
+<!-- trigger-pages-deploy: GitHub Pages source is now GitHub Actions; re-run docs workflow -->
