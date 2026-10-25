@@ -112,7 +112,7 @@ jobs:
         # below verify THIS build, not the stale registry :latest (the
         # local :latest would otherwise shadow the registry image on
         # PR runs and after base-image drift, silently scanning old bits).
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: false
@@ -156,7 +156,7 @@ jobs:
         # companion attestation.
         # Multi-arch: linux/amd64 + linux/arm64 (Raspberry Pi / ARM hosts).
         if: github.event_name != 'pull_request'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
