@@ -13,7 +13,7 @@ env:
 
 jobs:
   lint:
-    name: Lint (ruff)
+    name: Lint & types (ruff + mypy)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -23,14 +23,17 @@ jobs:
         with:
           python-version: '3.15'
 
-      - name: Install ruff
-        run: pip install ruff
+      - name: Install ruff + mypy
+        run: pip install ruff mypy
 
       - name: Lint
         run: ruff check yealink-fritzbox-phonebook-sync.py tests/
 
       - name: Check formatting
         run: ruff format --check yealink-fritzbox-phonebook-sync.py tests/
+
+      - name: Type-check
+        run: mypy yealink-fritzbox-phonebook-sync.py
 
   test:
     name: Unit tests
@@ -46,11 +49,11 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install pytest
-        run: pip install pytest
+      - name: Install pytest + coverage
+        run: pip install pytest pytest-cov
 
-      - name: Run tests
-        run: pytest tests/ -v
+      - name: Run tests with coverage
+        run: pytest tests/ -v --cov=yealink_fritzbox_phonebook_sync --cov-report=term --cov-fail-under=45
 
   docker:
     name: Docker build & push
