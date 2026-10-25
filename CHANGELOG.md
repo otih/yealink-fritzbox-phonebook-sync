@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **SBOM attached to the image itself:** CI now pushes images with the
+  CycloneDX SBOM attached as an OCI attestation (referrer manifest) in the
+  registry, retrievable with standard tooling (`docker buildx imagetools`,
+  oras, Trivy) by anyone who pulls the image. SLSA build provenance is
+  attached alongside. The downloadable workflow artifact remains for
+  convenience.
+
 ## [0.2.0] - 2026-10-25
 
 ### Added

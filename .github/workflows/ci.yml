@@ -109,10 +109,10 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Generate SBOM
-        # Software Bill of Materials: full component inventory incl. the
-        # base-image relationship — attached as a build artifact so anyone
-        # can audit exactly what is in the image.
+      - name: Generate SBOM (workflow artifact)
+        # Software Bill of Materials as a downloadable workflow artifact
+        # for quick human audits. The authoritative copy is attached to the
+        # image itself as an OCI attestation in the push step below.
         uses: anchore/sbom-action@v0
         with:
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
@@ -129,8 +129,22 @@ jobs:
           exit-code: 1
           ignore-unfixed: true
 
-      - name: Push (only if scan passed)
+      - name: Push with SBOM attestation (only if scan passed)
+        # buildx reuses the cached layers (nothing rebuilds) and pushes the
+        # image with the CycloneDX SBOM attached as an OCI artifact
+        # (referrer manifest) in the registry — retrievable by anyone with
+        # standard tooling (docker buildx imagetools, oras, Trivy).
+        # provenance records the build inputs (SLSA), the standard
+        # companion attestation.
         if: github.event_name != 'pull_request'
-        run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
-          docker push --all-tags ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BASE_IMAGE_DIGEST=${{ steps.base.outputs.digest }}
+          sbom: true
+          provenance: mode=max
+          cache-from: type=gha
