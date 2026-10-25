@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-19
+
+### Security
+
+- **Fixed:** URL scheme whitelist in `fetch_phonebook()` — the download URL
+  from the SOAP response is now validated to be `http://` or `https://`.
+  A tampered SOAP response can no longer trick the server into opening
+  `file://` or other schemes (ruff S310).
+- **Audited:** Full security scan (ruff S/B rules) with risk-based review.
+  All remaining findings are documented exceptions with rationale at the
+  code site:
+  - MD5 in HTTP Digest auth — required by RFC 7616, protocol computation,
+    not password hashing (S324, 4×).
+  - stdlib XML parsing of Fritzbox responses — trusted authenticated LAN
+    device; ElementTree does not resolve external entities, and the Fritzbox
+    never emits DTDs, so XXE is not practically reachable (S314, 3×).
+  - `0.0.0.0` binding is intentional — the Yealink phone must reach the
+    server from the LAN (S104).
+- **New project principle:** a security scan must pass before every commit;
+  every exception is documented — risk-based approach.
+
+### Added
+
+- Unit test suite (`tests/test_converter.py`): 21 tests covering the XML
+  converter, menu builder, placeholder menu, escaping helpers, and type
+  label mapping.
+- Ruff lint and format configuration (`pyproject.toml`) targeting
+  Python 3.8 compatibility.
+- CI pipeline (`.github/workflows/ci.yml`, renamed from `docker.yml`) with
+  three gated jobs: `lint` (ruff check + format) → `test` (pytest matrix on
+  Python 3.13/3.14/3.15) → `docker` (build and push to GHCR only when
+  lint and tests pass).
+
+### Changed
+
+- Internal code cleanup to pass ruff: import sorting, unused imports
+  removed, `raise ... from None` for exception clarity, ruff formatter
+  applied. No functional changes.
+
 ## [0.1.0] - 2026-10-19
 
 ### Added
