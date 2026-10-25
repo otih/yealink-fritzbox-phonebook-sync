@@ -9,6 +9,7 @@ import base64
 import importlib.util
 import os
 import threading
+import time
 import urllib.error
 import urllib.request
 
@@ -57,6 +58,18 @@ class TestHealthEndpoint:
     def test_health_open_without_auth(self, server):
         base, st = server
         yfps.auth_user = ""
+        status, body = _get(base + "/health")
+        assert status == 200
+        assert '"status":"ok"' in body
+
+    def test_health_stays_ok_when_sync_never_ran(self, server):
+        """Docker/K8s restart semantics: /health must stay 200 + ok even when
+        the Fritzbox was never reachable — the server is healthy, only the
+        upstream sync is not. Degradation is reported via /metrics only."""
+        base, st = server
+        yfps.auth_user = ""
+        with st.lock:
+            st.last_sync = 0  # never synced
         status, body = _get(base + "/health")
         assert status == 200
         assert '"status":"ok"' in body
@@ -118,6 +131,48 @@ class TestAuthEnforcement:
         except urllib.error.HTTPError as e:
             status = e.code
         assert status == 401
+
+
+class TestDegradedMetric:
+    """yfps_degraded: 1 when the last successful sync is older than 3x the
+    refresh interval (or never synced), 0 otherwise. /health stays 200/ok
+    in both states — restart semantics must not change."""
+
+    def test_degraded_zero_when_sync_fresh(self, server):
+        base, st = server
+        with st.lock:
+            st.last_sync = time.time()
+            st.refresh_interval = 3600
+        status, body = _get(base + "/metrics")
+        assert status == 200
+        assert "yfps_degraded 0" in body
+
+    def test_degraded_one_when_sync_never_ran(self, server):
+        base, st = server
+        with st.lock:
+            st.last_sync = 0
+            st.refresh_interval = 3600
+        status, body = _get(base + "/metrics")
+        assert status == 200
+        assert "yfps_degraded 1" in body
+
+    def test_degraded_one_when_sync_stale(self, server):
+        base, st = server
+        with st.lock:
+            st.refresh_interval = 3600
+            st.last_sync = time.time() - 4 * 3600  # older than 3x interval
+        status, body = _get(base + "/metrics")
+        assert status == 200
+        assert "yfps_degraded 1" in body
+
+    def test_degraded_boundary_exactly_3x_interval_is_ok(self, server):
+        base, st = server
+        with st.lock:
+            st.refresh_interval = 3600
+            st.last_sync = time.time() - 3 * 3600  # exactly 3x → not degraded
+        status, body = _get(base + "/metrics")
+        assert status == 200
+        assert "yfps_degraded 0" in body
 
 
 class TestRouting:

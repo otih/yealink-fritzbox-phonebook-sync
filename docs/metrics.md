@@ -13,6 +13,7 @@ otherwise) and whether the Fritzbox sync is healthy.
 | Metric | Type | Meaning |
 |--------|------|---------|
 | `yfps_build_info{version="x.y.z"}` | gauge | Build/version info, constant `1`. The `version` label carries the app version — use it to see which version a running instance reports (matches the startup log line). |
+| `yfps_degraded` | gauge | `1` if the last successful Fritzbox sync is older than 3× the refresh interval (or never synced), `0` otherwise. Server-computed so you don't have to replicate the threshold in PromQL. `/health` stays `200/ok` in this state — restarting the server would not help, it would even lose the last-known-good cache. |
 | `yfps_sync_success_total` | counter | Number of successful sync cycles since process start. |
 | `yfps_sync_failure_total` | counter | Number of failed sync cycles since process start. |
 | `yfps_sync_last_timestamp_seconds` | gauge | Unix timestamp of the last successful sync (`0` = never synced). |
@@ -71,6 +72,23 @@ groups:
             No successful Fritzbox sync for more than 2 hours. The phone
             serves the last known good phonebook. Check Fritzbox
             reachability and TR-064 credentials.
+
+      # Server-side degraded flag: the server itself computed that the
+      # last successful sync is older than 3x the refresh interval.
+      # Redundant with PhonebookSyncStale by design — fires later, as a
+      # safety net that needs no interval knowledge in Prometheus.
+      - alert: PhonebookSyncDegraded
+        expr: yfps_degraded == 1
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Phonebook sync server reports degraded state"
+          description: >-
+            The server itself marks its Fritzbox sync as degraded (no
+            successful sync for 3x the refresh interval, or never synced).
+            The phone continues to be served from the last known good
+            cache. Check Fritzbox reachability and TR-064 credentials.
 
       # Sync failures: persistent failure even though syncs are attempted.
       - alert: PhonebookSyncFailing

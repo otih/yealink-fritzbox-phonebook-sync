@@ -677,6 +677,9 @@ class State:
         # (menu.xml or contacts/<id>.xml)? 0 = never.
         self.last_phone_fetch = 0
         self.phone_fetches = 0
+        # Configured sync interval (seconds) — basis for the degraded
+        # evaluation on /metrics. 0 = unknown (treated as never degraded).
+        self.refresh_interval = 0
         self.lock = threading.Lock()
 
 
@@ -799,10 +802,25 @@ class PhonebookHandler(BaseHTTPRequestHandler):
                 fetch_age = (
                     int(time.time() - state.last_phone_fetch) if state.last_phone_fetch else -1
                 )
+                # Degraded = last successful sync older than 3x the refresh
+                # interval (or never synced). /health keeps returning 200/ok
+                # in this state — the server itself is fine, only the
+                # upstream sync is behind. Restarting it would not help.
+                degraded = (
+                    1
+                    if (
+                        state.refresh_interval > 0
+                        and (state.last_sync == 0 or age > 3 * state.refresh_interval)
+                    )
+                    else 0
+                )
                 lines = [
                     "# HELP yfps_build_info Build/version information (constant 1)",
                     "# TYPE yfps_build_info gauge",
                     'yfps_build_info{version="%s"} 1' % APP_VERSION,
+                    "# HELP yfps_degraded 1 if the last successful Fritzbox sync is older than 3x the refresh interval (or never synced), 0 otherwise",
+                    "# TYPE yfps_degraded gauge",
+                    "yfps_degraded %d" % degraded,
                     "# HELP yfps_sync_success_total Number of successful sync cycles",
                     "# TYPE yfps_sync_success_total counter",
                     "yfps_sync_success_total %d" % state.sync_successes,
@@ -1140,6 +1158,8 @@ def main() -> None:
     # Serve a placeholder until first successful sync
     with state.lock:
         state.menu_xml = _placeholder_menu(external_url)
+        # Remember the interval for the /metrics degraded evaluation
+        state.refresh_interval = args.refresh_interval
 
     # Initial sync (non-blocking — server starts even if this fails)
     try:

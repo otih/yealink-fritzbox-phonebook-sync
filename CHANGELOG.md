@@ -16,6 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `<Telephone>`, the first non-empty label wins). The same name in two
   different phonebooks stays separate — dedup is scoped to one phonebook.
 
+- **Sync degradation flag:** `yfps_degraded` on `/metrics` is `1` when the
+  last successful Fritzbox sync is older than 3× the refresh interval (or
+  never synced), `0` otherwise — server-computed, so Prometheus does not
+  need to know the interval. `/health` deliberately keeps answering
+  `200 {"status":"ok"}` in this state: the server is fine, only the upstream
+  sync is behind, and a restart would not help (it would even drop the
+  last-known-good cache). Alert rule `PhonebookSyncDegraded` documented.
+
 ## [0.7.0] - 2026-10-25
 
 ### Added
