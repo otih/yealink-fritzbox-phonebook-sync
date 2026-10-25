@@ -7,10 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-25
+
 ### Added
 
 - **Version in the startup log:** the server logs
-  `yealink-fritzbox-phonebook-sync v0.5.0 starting` as its first banner
+  `yealink-fritzbox-phonebook-sync v0.6.0 starting` as its first banner
   line — `docker logs` now answers "which version is running?" at a
   glance. The version lives in a single `APP_VERSION` constant.
 - **`yfps_build_info{version="…"}` metric:** the running version is
