@@ -54,7 +54,7 @@ import sys
 import threading
 import time
 import xml.etree.ElementTree as ET
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.request import urlopen
 
 logger = logging.getLogger("fritz-pb-sync")
@@ -77,6 +77,7 @@ CHALLENGE_RETRY_DELAY = 0.3
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _strip_ns(tag):
     """Strip XML namespace: '{ns}element' → 'element'."""
     return tag.split("}", 1)[1] if "}" in tag else tag
@@ -85,16 +86,14 @@ def _strip_ns(tag):
 def _escape_xml(text):
     """Escape XML special characters."""
     return (
-        text.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
+        text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
     )
 
 
 # ---------------------------------------------------------------------------
 # Fritzbox TR-064 SOAP client
 # ---------------------------------------------------------------------------
+
 
 class FritzboxClient:
     """Minimal TR-064 SOAP client for phonebook retrieval."""
@@ -116,7 +115,7 @@ class FritzboxClient:
 
         realm = realm_m.group(1)
         nonce = nonce_m.group(1)
-        algo_m = re.search(r'algorithm=([^\s,]+)', challenge)
+        algo_m = re.search(r"algorithm=([^\s,]+)", challenge)
         algo = algo_m.group(1) if algo_m else "MD5"
         qop_m = re.search(r'qop="?([^",\s]+)"?', challenge)
         qop = qop_m.group(1) if qop_m else None
@@ -127,9 +126,7 @@ class FritzboxClient:
         if qop:
             cnonce = "%032x" % random.getrandbits(128)
             nc = "00000001"
-            response = hashlib.md5(
-                f"{ha1}:{nonce}:{nc}:{cnonce}:{qop}:{ha2}".encode()
-            ).hexdigest()
+            response = hashlib.md5(f"{ha1}:{nonce}:{nc}:{cnonce}:{qop}:{ha2}".encode()).hexdigest()
             return (
                 f'Digest username="{self.user}", realm="{realm}", '
                 f'nonce="{nonce}", uri="{uri}", algorithm={algo}, '
@@ -160,8 +157,14 @@ class FritzboxClient:
             '<u:%s xmlns:u="%s">%s</u:%s>'
             "</s:Body>"
             "</s:Envelope>"
-        ) % (SOAP_ENVELOPE_NS, SOAP_ENVELOPE_NS.rstrip("/") + "/encoding/", action,
-             ONT_SERVICE_URN, inner_xml, action)
+        ) % (
+            SOAP_ENVELOPE_NS,
+            SOAP_ENVELOPE_NS.rstrip("/") + "/encoding/",
+            action,
+            ONT_SERVICE_URN,
+            inner_xml,
+            action,
+        )
 
         body = envelope.encode("utf-8")
         soap_action = '"%s#%s"' % (ONT_SERVICE_URN, action)
@@ -179,10 +182,11 @@ class FritzboxClient:
         for attempt in range(MAX_CHALLENGE_RETRIES):
             try:
                 resp = self._raw_post(self.control_path, body, base_headers)
-            except (socket.error, RuntimeError) as exc:
+            except (OSError, RuntimeError) as exc:
                 last_exc = exc
-                logger.debug("Challenge attempt %d/%d failed: %s",
-                             attempt + 1, MAX_CHALLENGE_RETRIES, exc)
+                logger.debug(
+                    "Challenge attempt %d/%d failed: %s", attempt + 1, MAX_CHALLENGE_RETRIES, exc
+                )
                 time.sleep(CHALLENGE_RETRY_DELAY)
                 continue
             auth_hdr = resp["headers"].get("WWW-Authenticate", "")
@@ -201,9 +205,9 @@ class FritzboxClient:
 
         # Step 2: POST with digest auth
         auth_header = self._build_digest_auth(auth_hdr, self.control_path)
-        resp = self._raw_post(self.control_path, body, dict(
-            base_headers, Authorization=auth_header
-        ))
+        resp = self._raw_post(
+            self.control_path, body, dict(base_headers, Authorization=auth_header)
+        )
 
         if resp["status"] != 200:
             logger.error("SOAP %s HTTP %d: %s", action, resp["status"], resp["body"][:500])
@@ -258,7 +262,7 @@ class FritzboxClient:
             )
 
         header_block = raw[:sep].decode("utf-8", errors="replace")
-        resp_body = raw[sep + 4:].decode("utf-8", errors="replace")
+        resp_body = raw[sep + 4 :].decode("utf-8", errors="replace")
 
         status_line, _, header_rest = header_block.partition("\r\n")
         parts = status_line.split()
@@ -267,7 +271,7 @@ class FritzboxClient:
         try:
             status = int(parts[1])
         except ValueError:
-            raise RuntimeError("Non-numeric HTTP status: %s" % parts[1])
+            raise RuntimeError("Non-numeric HTTP status: %s" % parts[1]) from None
 
         resp_headers = {}
         for line in header_rest.split("\r\n"):
@@ -403,8 +407,10 @@ def convert_single_phonebook(fritzbox_xml_bytes):
             lines.append("    <Name>%s</Name>" % _escape_xml(name))
             for num, label in numbers:
                 if label:
-                    lines.append('    <Telephone label="%s">%s</Telephone>'
-                                % (_escape_xml(label), _escape_xml(num)))
+                    lines.append(
+                        '    <Telephone label="%s">%s</Telephone>'
+                        % (_escape_xml(label), _escape_xml(num))
+                    )
                 else:
                     lines.append("    <Telephone>%s</Telephone>" % _escape_xml(num))
             lines.append("  </DirectoryEntry>")
@@ -443,11 +449,12 @@ def build_menu_xml(phonebooks, server_base):
 # Shared state (thread-safe)
 # ---------------------------------------------------------------------------
 
+
 class State:
     def __init__(self):
         self.menu_xml = ""
         self.contacts = {}  # {phonebook_id: contacts_xml_str}
-        self.pb_meta = []   # [{id, name, count}]
+        self.pb_meta = []  # [{id, name, count}]
         self.last_sync = 0
         self.total_contacts = 0
         self.lock = threading.Lock()
@@ -476,6 +483,7 @@ def _placeholder_menu(server_base):
 # ---------------------------------------------------------------------------
 # HTTP server
 # ---------------------------------------------------------------------------
+
 
 class PhonebookHandler(BaseHTTPRequestHandler):
     # Yealink phones expect HTTP/1.1; BaseHTTPRequestHandler defaults to 1.0
@@ -513,7 +521,8 @@ class PhonebookHandler(BaseHTTPRequestHandler):
             with state.lock:
                 age = int(time.time() - state.last_sync) if state.last_sync else -1
                 payload = '{"status":"ok","contacts":%d,"last_sync_age_sec":%d}' % (
-                    state.total_contacts, age
+                    state.total_contacts,
+                    age,
                 )
             self._serve(payload, content_type="application/json")
             # Suppress health-check noise — log at DEBUG, not INFO
@@ -529,12 +538,12 @@ class PhonebookHandler(BaseHTTPRequestHandler):
             with state.lock:
                 body = state.menu_xml
             if not body:
-                body = '<YealinkIPPhoneDirectory><DirectoryEntry><Name>Not synced yet</Name></DirectoryEntry></YealinkIPPhoneDirectory>'
+                body = "<YealinkIPPhoneDirectory><DirectoryEntry><Name>Not synced yet</Name></DirectoryEntry></YealinkIPPhoneDirectory>"
             self._serve(body)
         elif self.path.startswith("/contacts/") and self.path.endswith(".xml"):
             # Extract phonebook ID from path: /contacts/1.xml → 1
             try:
-                pb_id = int(self.path[len("/contacts/"):-len(".xml")])
+                pb_id = int(self.path[len("/contacts/") : -len(".xml")])
             except ValueError:
                 self.send_error(404)
                 return
@@ -554,8 +563,13 @@ class PhonebookHandler(BaseHTTPRequestHandler):
         self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(body)
-        logger.info('%s - "%s %s HTTP/1.1" 200 %d',
-                     self.client_address[0], self.command, self.path, len(body))
+        logger.info(
+            '%s - "%s %s HTTP/1.1" 200 %d',
+            self.client_address[0],
+            self.command,
+            self.path,
+            len(body),
+        )
 
     def log_message(self, fmt, *args):
         # Catch 401/404 and other non-200 responses that go through send_error/send_response
@@ -565,6 +579,7 @@ class PhonebookHandler(BaseHTTPRequestHandler):
 # ---------------------------------------------------------------------------
 # Sync loop
 # ---------------------------------------------------------------------------
+
 
 def sync_once(client, phonebook_ids, server_base, external_url):
     """Perform one sync cycle. Raises on failure — caller handles retries.
@@ -628,6 +643,7 @@ def sync_loop(client, phonebook_ids, server_base, external_url, refresh_interval
 # Entry point
 # ---------------------------------------------------------------------------
 
+
 def main():
     p = argparse.ArgumentParser(
         description="Fritzbox → Yealink phonebook sync server",
@@ -637,18 +653,33 @@ def main():
     p.add_argument("--fritzbox-port", type=int, default=int(os.getenv("FB_PORT", "49000")))
     p.add_argument("--fritzbox-user", default=os.getenv("FB_USER", ""))
     p.add_argument("--fritzbox-password", default=os.getenv("FB_PASSWORD", ""))
-    p.add_argument("--phonebook-id", default=os.getenv("FB_PHONEBOOK_ID", ""),
-                   help="Single ID (e.g. '1'), multiple (e.g. '0,1'), or empty for all")
+    p.add_argument(
+        "--phonebook-id",
+        default=os.getenv("FB_PHONEBOOK_ID", ""),
+        help="Single ID (e.g. '1'), multiple (e.g. '0,1'), or empty for all",
+    )
     p.add_argument("--listen-port", type=int, default=int(os.getenv("SYNC_LISTEN_PORT", "8080")))
-    p.add_argument("--refresh-interval", type=int,
-                   default=int(os.getenv("SYNC_REFRESH_INTERVAL", "3600")),
-                   help="Seconds between syncs (default: 3600 = 1h)")
-    p.add_argument("--server-url", default=os.getenv("SYNC_SERVER_URL", os.getenv("SYNC_EXTERNAL_URL", "")),
-                   help="External URL the Yealink phone uses to reach this server, e.g. http://192.168.1.50:8080")
-    p.add_argument("--auth-user", default=os.getenv("SYNC_AUTH_USER", ""),
-                   help="HTTP Basic Auth username for phonebook access (empty = no auth)")
-    p.add_argument("--auth-password", default=os.getenv("SYNC_AUTH_PASSWORD", ""),
-                   help="HTTP Basic Auth password for phonebook access")
+    p.add_argument(
+        "--refresh-interval",
+        type=int,
+        default=int(os.getenv("SYNC_REFRESH_INTERVAL", "3600")),
+        help="Seconds between syncs (default: 3600 = 1h)",
+    )
+    p.add_argument(
+        "--server-url",
+        default=os.getenv("SYNC_SERVER_URL", os.getenv("SYNC_EXTERNAL_URL", "")),
+        help="External URL the Yealink phone uses to reach this server, e.g. http://192.168.1.50:8080",
+    )
+    p.add_argument(
+        "--auth-user",
+        default=os.getenv("SYNC_AUTH_USER", ""),
+        help="HTTP Basic Auth username for phonebook access (empty = no auth)",
+    )
+    p.add_argument(
+        "--auth-password",
+        default=os.getenv("SYNC_AUTH_PASSWORD", ""),
+        help="HTTP Basic Auth password for phonebook access",
+    )
     args = p.parse_args()
 
     logging.basicConfig(
@@ -663,8 +694,10 @@ def main():
 
     if not args.server_url:
         args.server_url = "http://0.0.0.0:%d" % args.listen_port
-        logger.warning("--server-url not set; using %s — the phone may not reach this address.",
-                       args.server_url)
+        logger.warning(
+            "--server-url not set; using %s — the phone may not reach this address.",
+            args.server_url,
+        )
         logger.warning("Set --server-url to the IP/hostname the Yealink will use.")
 
     # server_base: used for internal URL construction (no credentials)
@@ -693,8 +726,9 @@ def main():
         logger.warning("HTTP Basic Auth DISABLED — phonebook is accessible without credentials")
 
     # Resolve phonebook IDs
-    client = FritzboxClient(args.fritzbox_host, args.fritzbox_port,
-                            args.fritzbox_user, args.fritzbox_password)
+    client = FritzboxClient(
+        args.fritzbox_host, args.fritzbox_port, args.fritzbox_user, args.fritzbox_password
+    )
 
     if args.phonebook_id:
         pb_ids = [int(i) for i in args.phonebook_id.split(",")]
@@ -703,7 +737,10 @@ def main():
             pb_ids = client.get_phonebook_ids()
             logger.info("Auto-detected phonebook IDs: %s", pb_ids)
         except Exception as exc:
-            logger.warning("Cannot auto-detect phonebook IDs (%s) — starting server anyway, will retry in background", exc)
+            logger.warning(
+                "Cannot auto-detect phonebook IDs (%s) — starting server anyway, will retry in background",
+                exc,
+            )
             pb_ids = []
 
     # Serve a placeholder until first successful sync

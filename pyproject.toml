@@ -1,0 +1,26 @@
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "B008",  # do not perform function calls in argument defaults
+    "UP031",  # percent-format is fine — project targets Python 3.8 compatibility
+    "UP032",  # f-strings: keep %-format for 3.8 compat, avoid churn
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["yealink-fritzbox-phonebook-sync"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v"
