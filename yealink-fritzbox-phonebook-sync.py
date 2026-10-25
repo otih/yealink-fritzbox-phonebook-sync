@@ -94,6 +94,13 @@ def _escape_xml(text):
 # Fritzbox TR-064 SOAP client
 # ---------------------------------------------------------------------------
 
+# Security note on XML parsing (S314): stdlib xml.etree is used to parse
+# responses from the Fritzbox — a trusted, authenticated device on the LAN.
+# ElementTree does not resolve external entities by default, so XXE (the
+# main S314 concern) requires the parser to encounter crafted DTDs; the
+# Fritzbox never emits DTDs in its TR-064 responses. defusedxml would add a
+# dependency for no practical gain here; revisit if the trust model changes.
+
 
 class FritzboxClient:
     """Minimal TR-064 SOAP client for phonebook retrieval."""
@@ -120,20 +127,22 @@ class FritzboxClient:
         qop_m = re.search(r'qop="?([^",\s]+)"?', challenge)
         qop = qop_m.group(1) if qop_m else None
 
-        ha1 = hashlib.md5(f"{self.user}:{realm}:{self.password}".encode()).hexdigest()
-        ha2 = hashlib.md5(f"POST:{uri}".encode()).hexdigest()
+        # HTTP Digest Auth requires MD5 per RFC 7616 — this is the protocol
+        # computation, not password hashing. noqa: S324
+        ha1 = hashlib.md5(f"{self.user}:{realm}:{self.password}".encode()).hexdigest()  # noqa: S324
+        ha2 = hashlib.md5(f"POST:{uri}".encode()).hexdigest()  # noqa: S324
 
         if qop:
             cnonce = "%032x" % random.getrandbits(128)
             nc = "00000001"
-            response = hashlib.md5(f"{ha1}:{nonce}:{nc}:{cnonce}:{qop}:{ha2}".encode()).hexdigest()
+            response = hashlib.md5(f"{ha1}:{nonce}:{nc}:{cnonce}:{qop}:{ha2}".encode()).hexdigest()  # noqa: S324 — RFC 7616 Digest protocol
             return (
                 f'Digest username="{self.user}", realm="{realm}", '
                 f'nonce="{nonce}", uri="{uri}", algorithm={algo}, '
                 f'qop={qop}, nc={nc}, cnonce="{cnonce}", response="{response}"'
             )
         else:
-            response = hashlib.md5(f"{ha1}:{nonce}:{ha2}".encode()).hexdigest()
+            response = hashlib.md5(f"{ha1}:{nonce}:{ha2}".encode()).hexdigest()  # noqa: S324 — RFC 7616 Digest protocol
             return (
                 f'Digest username="{self.user}", realm="{realm}", '
                 f'nonce="{nonce}", uri="{uri}", response="{response}"'
@@ -284,7 +293,7 @@ class FritzboxClient:
     def get_phonebook_ids(self):
         """Return list of phonebook IDs available on the Fritzbox."""
         raw = self._soap("GetPhonebookList")
-        root = ET.fromstring(raw)
+        root = ET.fromstring(raw)  # noqa: S314 — trusted Fritzbox source, see security note
         for elem in root.iter():
             if _strip_ns(elem.tag) == "NewPhonebookList":
                 ids_str = (elem.text or "").strip()
@@ -295,7 +304,7 @@ class FritzboxClient:
         """Return the download URL for a specific phonebook ID."""
         inner = "<NewPhonebookId>%d</NewPhonebookId>" % phonebook_id
         raw = self._soap("GetPhonebook", inner)
-        root = ET.fromstring(raw)
+        root = ET.fromstring(raw)  # noqa: S314 — trusted Fritzbox source, see security note
         for elem in root.iter():
             if _strip_ns(elem.tag) == "NewPhonebookURL":
                 return (elem.text or "").strip()
@@ -304,11 +313,17 @@ class FritzboxClient:
     def fetch_phonebook(self, phonebook_id):
         """Download raw Fritzbox phonebook XML (bytes) for one phonebook ID.
 
-        Raises URLError on download failure.
+        The URL comes from the Fritzbox SOAP response; only http/https
+        schemes are allowed to prevent file:// or other scheme abuse if
+        the SOAP response were ever tampered with.
+
+        Raises URLError on download failure, ValueError on disallowed schemes.
         """
         url = self.get_phonebook_url(phonebook_id)
+        if not url.startswith(("http://", "https://")):
+            raise ValueError("Refusing non-HTTP phonebook URL: %s" % url[:120])
         logger.info("Downloading phonebook %d from %s", phonebook_id, url)
-        resp = urlopen(url, timeout=DOWNLOAD_TIMEOUT)
+        resp = urlopen(url, timeout=DOWNLOAD_TIMEOUT)  # noqa: S310 — scheme whitelisted above
         return resp.read()
 
     def fetch_all_phonebooks(self, ids):
@@ -344,7 +359,7 @@ def convert_single_phonebook(fritzbox_xml_bytes):
     Each <Telephone> gets a label attribute mapped from the Fritzbox number type.
     Internal Fritzbox numbers (**9, **600, etc.) are filtered out.
     """
-    root = ET.fromstring(fritzbox_xml_bytes)
+    root = ET.fromstring(fritzbox_xml_bytes)  # noqa: S314 — trusted Fritzbox source, see security note
 
     # Extract phonebook name from the <phonebook name="..."> attribute
     pb_name = "Telefonbuch"
@@ -762,7 +777,10 @@ def main():
     t.start()
 
     # HTTP server
-    srv = HTTPServer(("0.0.0.0", args.listen_port), PhonebookHandler)
+    # HTTP server — binding to all interfaces (S104) is intentional:
+    # the Yealink phone on the LAN must be able to reach this server.
+    # Restrict via container network policy or a reverse proxy if needed.
+    srv = HTTPServer(("0.0.0.0", args.listen_port), PhonebookHandler)  # noqa: S104
     logger.info("=" * 60)
     logger.info("Listening on http://0.0.0.0:%d", args.listen_port)
     logger.info("Yealink Remote Phonebook URL: %s/menu.xml", args.server_url.rstrip("/"))
