@@ -60,6 +60,115 @@ EMPTY_PHONEBOOK = b"""<?xml version="1.0" encoding="UTF-8"?>
 </phonebooks>"""
 
 
+# Deliberately unsorted: document order is Zorro, Ärger, alfred, Bob.
+SORT_PHONEBOOK = b"""<?xml version="1.0" encoding="UTF-8"?>
+<phonebooks>
+<phonebook owner="0" name="Testbook">
+<contact>
+<person><realName>Zorro Example</realName></person>
+<telephony>
+<number type="mobile">+49 170 5550001</number>
+</telephony>
+</contact>
+<contact>
+<person><realName>\xc3\x84rger Beispiel</realName></person>
+<telephony>
+<number type="home">+49 171 5550002</number>
+</telephony>
+</contact>
+<contact>
+<person><realName>alfred example</realName></person>
+<telephony>
+<number type="work">+49 172 5550003</number>
+</telephony>
+</contact>
+<contact>
+<person><realName>Bob Beispiel</realName></person>
+<telephony>
+<number type="home">+49 173 5550004</number>
+</telephony>
+</contact>
+</phonebook>
+</phonebooks>"""
+
+# Same contact (same name) twice in one phonebook, different numbers —
+# must be merged into one DirectoryEntry.
+DUPLICATE_CONTACT_PHONEBOOK = b"""<?xml version="1.0" encoding="UTF-8"?>
+<phonebooks>
+<phonebook owner="0" name="Testbook">
+<contact>
+<person><realName>Dup Name</realName></person>
+<telephony>
+<number type="mobile">+49 170 7770001</number>
+</telephony>
+</contact>
+<contact>
+<person><realName>Other Name</realName></person>
+<telephony>
+<number type="home">+49 711 7770009</number>
+</telephony>
+</contact>
+<contact>
+<person><realName>Dup Name</realName></person>
+<telephony>
+<number type="work">+49 89 7770002</number>
+</telephony>
+</contact>
+</phonebook>
+</phonebooks>"""
+
+# Same number twice within one contact (differing labels) — must be
+# deduplicated to a single <Telephone>.
+DUPLICATE_NUMBER_PHONEBOOK = b"""<?xml version="1.0" encoding="UTF-8"?>
+<phonebooks>
+<phonebook owner="0" name="Testbook">
+<contact>
+<person><realName>Number Dup</realName></person>
+<telephony>
+<number type="mobile">+49 170 8880001</number>
+<number type="work">+49 170 8880001</number>
+</telephony>
+</contact>
+</phonebook>
+</phonebooks>"""
+
+# Empty label on first occurrence, labeled second — the label should win.
+LABEL_RESOLVED_ON_DUP = b"""<?xml version="1.0" encoding="UTF-8"?>
+<phonebooks>
+<phonebook owner="0" name="Testbook">
+<contact>
+<person><realName>Label Dup</realName></person>
+<telephony>
+<number>+49 170 9990001</number>
+<number type="mobile">+49 170 9990001</number>
+</telephony>
+</contact>
+</phonebook>
+</phonebooks>"""
+
+# Same contact in TWO separate <phonebook> elements — dedup is scoped to
+# one phonebook, these must NOT be merged.
+TWO_PHONEBOOKS_SAME_CONTACT = b"""<?xml version="1.0" encoding="UTF-8"?>
+<phonebooks>
+<phonebook owner="0" name="First">
+<contact>
+<person><realName>Cross Name</realName></person>
+<telephony>
+<number type="mobile">+49 170 6660001</number>
+</telephony>
+</contact>
+</phonebook>
+<phonebook owner="1" name="Second">
+<contact>
+<person><realName>Cross Name</realName></person>
+<telephony>
+<number type="work">+49 89 6660002</number>
+</telephony>
+</contact>
+</phonebook>
+</phonebooks>"""
+
+
 # ---------------------------------------------------------------------------
 # Tests: _strip_ns
 # ---------------------------------------------------------------------------
@@ -139,6 +248,78 @@ class TestConvertSinglePhonebook:
         _, contacts, count = yfps.convert_single_phonebook(EMPTY_PHONEBOOK)
         assert count == 0
         assert "<DirectoryEntry>" not in contacts
+
+
+# ---------------------------------------------------------------------------
+# Tests: sorting (alphabetical, case-insensitive, umlaut-aware)
+# ---------------------------------------------------------------------------
+
+
+class TestSortContacts:
+    def test_contacts_sorted_alphabetically(self):
+        # Document order: Zorro, Ärger, alfred, Bob.
+        # Expected (folded keys): alfred < ärger(arger) < bob < zorro.
+        _, contacts, count = yfps.convert_single_phonebook(SORT_PHONEBOOK)
+        assert count == 4
+        pos_ae = contacts.find("rger Beispiel")  # Ärger
+        pos_alfred = contacts.find("alfred example")
+        pos_bob = contacts.find("Bob Beispiel")
+        pos_zorro = contacts.find("Zorro Example")
+        assert -1 not in (pos_ae, pos_alfred, pos_bob, pos_zorro)
+        assert pos_alfred < pos_ae < pos_bob < pos_zorro
+
+    def test_sort_case_insensitive(self):
+        # alfred (lowercase) must not sort behind Zorro
+        _, contacts, _ = yfps.convert_single_phonebook(SORT_PHONEBOOK)
+        assert contacts.find("alfred example") < contacts.find("Zorro Example")
+
+    def test_sort_umlaut_german_collation(self):
+        # Ä sorts as A — before B(ob), not after Z
+        _, contacts, _ = yfps.convert_single_phonebook(SORT_PHONEBOOK)
+        assert contacts.find("rger Beispiel") < contacts.find("Bob Beispiel")
+
+
+# ---------------------------------------------------------------------------
+# Tests: deduplication (within a single phonebook)
+# ---------------------------------------------------------------------------
+
+
+class TestDedupContacts:
+    def test_duplicate_contact_merged(self):
+        # Same name twice → one DirectoryEntry with both numbers
+        _, contacts, count = yfps.convert_single_phonebook(DUPLICATE_CONTACT_PHONEBOOK)
+        assert count == 2  # Dup Name (merged) + Other Name
+        assert contacts.count("Dup Name") == 1
+        # merged entry carries both numbers (normalized form)
+        assert "+491707770001" in contacts
+        assert "+49897770002" in contacts
+
+    def test_duplicate_contact_numbers_combined(self):
+        # The merged entry lists both numbers; 'Other Name' keeps its one
+        _, contacts, _ = yfps.convert_single_phonebook(DUPLICATE_CONTACT_PHONEBOOK)
+        dup_block = contacts[contacts.find("Dup Name") : contacts.find("Other Name")]
+        assert dup_block.count("<Telephone") == 2
+
+    def test_duplicate_number_within_contact_deduped(self):
+        # Same number twice in one contact (different types) → one element
+        _, contacts, count = yfps.convert_single_phonebook(DUPLICATE_NUMBER_PHONEBOOK)
+        assert count == 1
+        assert contacts.count("<Telephone") == 1
+        assert contacts.count("+491708880001") == 1
+
+    def test_label_resolved_on_duplicate_number(self):
+        # First occurrence unlabeled, second labeled 'mobile' → label wins
+        _, contacts, _ = yfps.convert_single_phonebook(LABEL_RESOLVED_ON_DUP)
+        assert contacts.count("<Telephone") == 1
+        assert '<Telephone label="Mobil">+491709990001</Telephone>' in contacts
+
+    def test_dedup_scoped_to_single_phonebook(self):
+        # Same contact name in TWO <phonebook> elements → NOT merged
+        _, contacts, count = yfps.convert_single_phonebook(TWO_PHONEBOOKS_SAME_CONTACT)
+        assert count == 2
+        assert contacts.count("Cross Name") == 2
+        assert "+491706660001" in contacts
+        assert "+49896660002" in contacts
 
 
 # ---------------------------------------------------------------------------
