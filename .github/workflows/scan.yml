@@ -64,7 +64,7 @@ jobs:
       # Actions tab. Skips if an open scan issue already exists (label).
       - name: Open tracking issue on findings
         if: steps.findings.outputs.count != '0'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const label = 'vulnerability-scan';
