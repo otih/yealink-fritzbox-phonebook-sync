@@ -23,7 +23,14 @@ _SPEC.loader.exec_module(yfps)
 
 @pytest.fixture()
 def server():
-    """Start the real HTTP server on an ephemeral port; yield (base_url, state)."""
+    """Start the real HTTP server on an ephemeral port; yield (base_url, state).
+
+    The server shares the module-global state across tests — reset the
+    per-process counters so each test starts from a known point.
+    """
+    with yfps.state.lock:
+        yfps.state.phone_fetches = 0
+        yfps.state.last_phone_fetch = 0
     srv = yfps._make_server("127.0.0.1", 0)
     port = srv.server_address[1]
     thread = threading.Thread(target=srv.serve_forever, daemon=True)
@@ -152,3 +159,29 @@ class TestRouting:
         assert status == 200
         assert "# TYPE yfps_build_info gauge" in body
         assert 'yfps_build_info{version="%s"} 1' % yfps.APP_VERSION in body
+
+    def test_metrics_expose_phonebook_fetch_tracking(self, server):
+        """Fetching /menu.xml must be reflected in the fetch metrics."""
+        base, _ = server
+        # Before any phonebook fetch: never fetched (-1 / 0)
+        status, body = _get(base + "/metrics")
+        assert status == 200
+        assert "yfps_phonebook_fetch_total 0" in body
+        assert "yfps_phonebook_fetch_age_seconds -1" in body
+
+        # Fetch the menu like a phone would
+        _get(base + "/menu.xml")
+
+        status, body = _get(base + "/metrics")
+        assert status == 200
+        assert "yfps_phonebook_fetch_total 1" in body
+        total_line = [
+            ln
+            for ln in body.splitlines()
+            if ln.startswith("yfps_phonebook_fetch_last_timestamp_seconds")
+        ][0]
+        assert int(total_line.split()[-1]) > 0
+        age_line = [
+            ln for ln in body.splitlines() if ln.startswith("yfps_phonebook_fetch_age_seconds")
+        ][0]
+        assert int(age_line.split()[-1]) == 0  # just fetched

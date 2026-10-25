@@ -621,6 +621,10 @@ class State:
         self.total_contacts = 0
         self.sync_successes = 0
         self.sync_failures = 0
+        # Phone-side activity: when did a phone last fetch a phonebook
+        # (menu.xml or contacts/<id>.xml)? 0 = never.
+        self.last_phone_fetch = 0
+        self.phone_fetches = 0
         self.lock = threading.Lock()
 
 
@@ -709,6 +713,17 @@ class PhonebookHandler(BaseHTTPRequestHandler):
         self.end_headers()
         return False
 
+    def _record_phone_fetch(self) -> None:
+        """Track phone-side activity: a phonebook was just served to a phone.
+
+        Called after successfully serving /menu.xml or /contacts/<id>.xml —
+        answers "when did the phone last pull its phonebook?" (mirrors the
+        Fritzbox-side yfps_sync_* metrics).
+        """
+        with state.lock:
+            state.phone_fetches += 1
+            state.last_phone_fetch = time.time()
+
     def do_GET(self) -> None:
         # /health is always open (needed for Docker HEALTHCHECK, monitoring)
         if self.path == "/health":
@@ -729,6 +744,9 @@ class PhonebookHandler(BaseHTTPRequestHandler):
         if self.path == "/metrics":
             with state.lock:
                 age = int(time.time() - state.last_sync) if state.last_sync else -1
+                fetch_age = (
+                    int(time.time() - state.last_phone_fetch) if state.last_phone_fetch else -1
+                )
                 lines = [
                     "# HELP yfps_build_info Build/version information (constant 1)",
                     "# TYPE yfps_build_info gauge",
@@ -745,6 +763,15 @@ class PhonebookHandler(BaseHTTPRequestHandler):
                     "# HELP yfps_sync_age_seconds Seconds since the last successful sync (-1 = never)",
                     "# TYPE yfps_sync_age_seconds gauge",
                     "yfps_sync_age_seconds %d" % age,
+                    "# HELP yfps_phonebook_fetch_total Number of phonebook downloads by phones (menu.xml or contacts/<id>.xml)",
+                    "# TYPE yfps_phonebook_fetch_total counter",
+                    "yfps_phonebook_fetch_total %d" % state.phone_fetches,
+                    "# HELP yfps_phonebook_fetch_last_timestamp_seconds Unix timestamp of the last phonebook download by a phone",
+                    "# TYPE yfps_phonebook_fetch_last_timestamp_seconds gauge",
+                    "yfps_phonebook_fetch_last_timestamp_seconds %d" % int(state.last_phone_fetch),
+                    "# HELP yfps_phonebook_fetch_age_seconds Seconds since a phone last downloaded a phonebook (-1 = never)",
+                    "# TYPE yfps_phonebook_fetch_age_seconds gauge",
+                    "yfps_phonebook_fetch_age_seconds %d" % fetch_age,
                     "# HELP yfps_contacts_total Total contacts across all phonebooks",
                     "# TYPE yfps_contacts_total gauge",
                     "yfps_contacts_total %d" % state.total_contacts,
@@ -765,6 +792,7 @@ class PhonebookHandler(BaseHTTPRequestHandler):
             if not body:
                 body = "<YealinkIPPhoneDirectory><DirectoryEntry><Name>Not synced yet</Name></DirectoryEntry></YealinkIPPhoneDirectory>"
             self._serve(body)
+            self._record_phone_fetch()
         elif self.path.startswith("/contacts/") and self.path.endswith(".xml"):
             # Extract phonebook ID from path: /contacts/1.xml → 1
             try:
@@ -777,6 +805,7 @@ class PhonebookHandler(BaseHTTPRequestHandler):
             if not body:
                 body = "<YealinkIPPhoneDirectory/>"
             self._serve(body)
+            self._record_phone_fetch()
         else:
             self.send_error(404)
 

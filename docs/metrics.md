@@ -17,6 +17,9 @@ otherwise) and whether the Fritzbox sync is healthy.
 | `yfps_sync_failure_total` | counter | Number of failed sync cycles since process start. |
 | `yfps_sync_last_timestamp_seconds` | gauge | Unix timestamp of the last successful sync (`0` = never synced). |
 | `yfps_sync_age_seconds` | gauge | Seconds since the last successful sync (`-1` = never synced). This is *the* freshness indicator. |
+| `yfps_phonebook_fetch_total` | counter | Number of phonebook downloads by phones (`/menu.xml` or `/contacts/<id>.xml`) since process start. |
+| `yfps_phonebook_fetch_last_timestamp_seconds` | gauge | Unix timestamp of the last phonebook download by a phone (`0` = never). |
+| `yfps_phonebook_fetch_age_seconds` | gauge | Seconds since a phone last downloaded a phonebook (`-1` = never). Mirrors `yfps_sync_age_seconds` on the phone side. |
 | `yfps_contacts_total` | gauge | Total contacts across all served phonebooks (after filtering). |
 | `yfps_phonebooks_total` | gauge | Number of phonebooks currently served. |
 
@@ -25,6 +28,13 @@ refresh interval (default 3600 s). A rising `yfps_sync_failure_total` with a
 growing age means the Fritzbox is unreachable (power outage, IP change,
 credentials) — the phone keeps serving the *last known good* phonebook, so
 users won't notice until you alert on it.
+
+`yfps_phonebook_fetch_age_seconds` covers the other direction: the phone.
+The Yealink polls its remote phonebook periodically (configurable on the
+phone, typically hourly). A growing fetch age while the server is healthy
+means the phone stopped polling — offline, reboot loop, wrong remote URL,
+or it fetches from a different server instance than the one you monitor.
+Alert when it exceeds ~2× the phone's own poll interval.
 
 ## Prometheus scrape config
 
@@ -75,6 +85,22 @@ groups:
             with exponential backoff; if this persists, credentials or
             network path to the Fritzbox are broken.
 
+      # Phone side: the Yealink stopped pulling its phonebook while the
+      # server is healthy — phone offline, reboot loop, wrong remote URL,
+      # or it fetches from another instance. Threshold ~2x the phone's
+      # own poll interval (typically hourly).
+      - alert: PhonebookNotFetchedByPhone
+        expr: yfps_phonebook_fetch_age_seconds > 7200 or yfps_phonebook_fetch_age_seconds == -1
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Phone has not fetched its phonebook for {{ $value }}s"
+          description: >-
+            No phonebook download by any phone for more than 2 hours
+            while the server is up. Check the phone's remote phonebook
+            URL and its polling interval setting.
+
       # Availability: the health endpoint is scraped implicitly by these
       # metrics — if the target is down, Prometheus marks it DOWN.
       - alert: PhonebookExporterDown
@@ -115,8 +141,11 @@ receivers:
 For a one-panel dashboard, the essentials:
 
 ```promql
-# Freshness over time
+# Freshness over time (Fritzbox side)
 yfps_sync_age_seconds
+
+# Phone-side freshness: when did the phone last pull its phonebook?
+yfps_phonebook_fetch_age_seconds
 
 # Success/failure rate (per 5 min)
 rate(yfps_sync_success_total[5m])
