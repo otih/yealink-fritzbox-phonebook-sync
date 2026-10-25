@@ -43,6 +43,35 @@ Both tools install with `pip install ruff pytest`.
 - The subject line states *what*; the body explains *why*.
 - One logical change per commit.
 
+## Versioning concept
+
+This project follows [Semantic Versioning](https://semver.org/) with these
+binding rules for choosing the next number:
+
+| Change | Bump | Examples |
+|--------|------|----------|
+| **Breaking** — anything a user must adapt to: removed/renamed env vars, CLI flags, endpoints, changed XML output, changed default behavior | **MAJOR** (`1.0.0`) | removing `SYNC_SERVER_URL`, changing the `/contacts/<id>.xml` path scheme |
+| **New feature** — new capability without breaking anything: new endpoints, new env vars (additive), new output that old consumers can ignore | **MINOR** (`0.3.0`) | `/metrics` endpoint, multi-arch images |
+| **Fix / hardening** — bug fixes, security patches, dependency updates, CI/internal changes with no user-facing API change; also small additive conveniences | **PATCH** (`0.2.1`) | CVE cleanup in the image, SBOM attestation, backoff tuning |
+
+Rules of application:
+
+1. **`0.x` phase:** MAJOR-like breaking changes bump the MINOR number
+   (0.x is explicitly "anything may change" in SemVer; we still treat it
+   responsibly: 0.3.0 after v0.2.x never breaks silently — breaking
+   changes are called out in the changelog).
+2. **The artifact is the contract:** if the *published Docker image*
+   changes, that is a release, even when the Python code did not —
+   the image is the product users consume.
+3. **Unreleased section decides:** the changelog's `[Unreleased]` entries
+   determine the bump — a `feat:` entry forces MINOR, only `fix:`/`chore:`
+   entries allow PATCH. If in doubt, take the higher number.
+4. **Never rewrite history:** a released version is immutable; corrections
+   get a new version.
+
+The AI agent with release authority for this project applies exactly this
+table; when a change does not clearly fit a row, it asks the maintainer.
+
 ## Pull requests
 
 - PRs run the full CI: lint → tests → E2E container smoke test.

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-25
+
+### Changed
+
+- **Code of Conduct §4 rewritten:** the AI agent for this project holds
+  release authority (merge, release, tag) — project-specific, does not
+  transfer to other projects; every release decision is surfaced in the
+  conversation.
+- **Versioning concept added to CONTRIBUTING.md:** binding SemVer table
+  (breaking → MAJOR, feature → MINOR, fix/hardening → PATCH) plus rules:
+  0.x phase maps breaking to MINOR, image changes are releases, the
+  [Unreleased] entries determine the bump, released versions are immutable.
+
+## [0.3.0] - 2026-10-25
+
 ## [0.3.0] - 2026-10-25
 
 ### Added

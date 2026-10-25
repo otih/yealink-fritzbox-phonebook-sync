@@ -33,12 +33,17 @@ rules.
 - Secrets, credentials, and personal data must never be committed —
   including "temporary" test credentials.
 
-## 4. Human oversight
+## 4. Trust and boundaries
 
-- AI agents do not self-merge, do not publish releases, and do not push
-  tags without an explicit human decision.
-- The human operator reviews and approves AI-generated changes before they
-  reach `main`. "The AI said it was fine" is not a review.
+- For this project the maintainer has granted the AI agent release
+  authority: the agent may merge, publish releases, and push tags on its
+  own when the CI gates are green and the release rules below are met.
+- This authority is project-specific and does not transfer to other
+  projects. The agent must still surface every release decision in the
+  conversation so the human can intervene.
+- Releases must follow the project's versioning concept (see
+  CONTRIBUTING.md); an agent that is unsure which version number applies
+  asks instead of guessing.
 
 ## 5. Respect the project's rules
 
