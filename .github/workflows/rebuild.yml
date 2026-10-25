@@ -8,42 +8,77 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write   # push the version-bump commit
-  packages: write    # push the image to GHCR
+  contents: read     # read main's HEAD (metadata only)
+  packages: write    # the called CI workflow publishes fresh images to GHCR
+                    # (effective GITHUB_TOKEN permissions come from THIS
+                    # caller workflow — it must grant what ci.yml needs)
 
 jobs:
-  rebuild:
-    name: Rebuild if base image changed
+  drift-check:
+    name: Detect base image drift
     runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.drift.outputs.changed }}
+      published: ${{ steps.published.outputs.digest }}
+      upstream: ${{ steps.upstream.outputs.digest }}
     steps:
-      - uses: actions/checkout@v5
-
-      - name: Detect base image change
-        id: base
+      # No checkout, no commits: since main is protected by a ruleset that
+      # requires status checks on every ref update, bots cannot push to it.
+      # The last known base-image digest is read from the OCI label
+      # (org.opencontainers.image.base.digest) on the published :latest
+      # image instead of a tracked file.
+      - name: Read base digest from the published image
+        id: published
         run: |
+          set -euo pipefail
+          # Pull the amd64 image (public package) and read the base-digest
+          # label. buildx imagetools cannot template labels off a
+          # multi-arch index; docker inspect on the pulled image can.
+          docker pull --platform linux/amd64 \
+            ghcr.io/otih/yealink-fritzbox-phonebook-sync:latest >/dev/null
+          LABEL=$(docker inspect \
+            --format '{{ index .Config.Labels "org.opencontainers.image.base.digest" }}' \
+            ghcr.io/otih/yealink-fritzbox-phonebook-sync:latest)
+          # Normalize: strip a redundant sha256: prefix (older published
+          # images carry a double prefix — fixed in CI, normalized here).
+          LABEL="sha256:${LABEL#sha256:}"
+          LABEL="sha256:${LABEL#sha256:}"
+          echo "digest=$LABEL" >> "$GITHUB_OUTPUT"
+          echo "Published image was built on base: $LABEL"
+
+      - name: Resolve current upstream digest
+        id: upstream
+        run: |
+          set -euo pipefail
           CURRENT=$(docker manifest inspect python:3.15-alpine | \
-            python3 -c "import sys,json; m=json.load(sys.stdin)['manifests'][0]; print(m['digest'])")
-          LAST=$(cat .github/base-image-digest 2>/dev/null || echo "")
-          if [ "$CURRENT" = "$LAST" ]; then
+            python3 -c "import sys,json; print(json.load(sys.stdin)['manifests'][0]['digest'])")
+          CURRENT="sha256:${CURRENT#sha256:}"
+          echo "digest=$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "Upstream python:3.15-alpine is now: $CURRENT"
+
+      - name: Detect drift
+        id: drift
+        run: |
+          if [ "${{ steps.upstream.outputs.digest }}" = "${{ steps.published.outputs.digest }}" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "Base image unchanged ($CURRENT) — no rebuild needed."
+            echo "Base image unchanged — no rebuild needed."
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "Base image changed: $LAST -> $CURRENT"
-            echo "$CURRENT" > .github/base-image-digest
+            echo "Base image drifted: ${{ steps.published.outputs.digest }} -> ${{ steps.upstream.outputs.digest }}"
           fi
 
-      - name: Commit updated digest
-        if: steps.base.outputs.changed == 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/base-image-digest
-          git commit -m "chore: base image digest update (weekly rebuild)"
-          git push
+  # Reuse the full CI pipeline as a called workflow: lint, tests (3
+  # Python versions), E2E, CVE gate, then multi-arch publish with SBOM
+  # and provenance. Same gates as a normal main push — the rebuild
+  # path can never skip them. The called workflow runs on main's HEAD
+  # (github.sha of this scheduled run), so no push to main is involved;
+  # inside it github.event_name is 'workflow_call' (not 'pull_request'),
+  # so the publish steps run as intended.
+  rebuild:
+    name: Rebuild and publish via CI pipeline
+    needs: drift-check
+    if: needs.drift-check.outputs.changed == 'true'
+    uses: otih/yealink-fritzbox-phonebook-sync/.github/workflows/ci.yml@main
 
-      # The push above triggers the full CI pipeline: lint -> tests ->
-      # E2E -> vulnerability gate -> multi-arch publish with SBOM.
-      # A version tag is NOT pushed automatically — the image flows to
-      # :main and :latest; the maintainer (or the AI agent with release
-      # authority) cuts a version release after reviewing the run.
+  # Version releases remain an explicit maintainer/AI-agent decision;
+  # this workflow only refreshes the rolling :main/:latest images.

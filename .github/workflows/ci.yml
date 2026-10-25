@@ -6,6 +6,12 @@ on:
     tags: ['v*']
   pull_request:
     branches: [main]
+  # Manual "rebuild & publish now" — runs the full pipeline on main.
+  workflow_dispatch:
+  # Called by the weekly rebuild workflow when the base image drifted:
+  # runs the full pipeline (tests, E2E, CVE gate) and publishes fresh
+  # :main/:latest images — no commit to main needed (PR-only mode).
+  workflow_call:
 
 env:
   REGISTRY: ghcr.io
@@ -15,6 +21,7 @@ jobs:
   lint:
     name: Lint & types (ruff + mypy)
     runs-on: ubuntu-latest
+    permissions: {}  # lint needs no token scopes
     steps:
       - uses: actions/checkout@v5
 
@@ -38,6 +45,7 @@ jobs:
   test:
     name: Unit tests
     runs-on: ubuntu-latest
+    permissions: {}  # tests need no token scopes
     strategy:
       matrix:
         python-version: ['3.13', '3.14', '3.15']
@@ -95,17 +103,23 @@ jobs:
         id: base
         run: |
           DIGEST=$(docker manifest inspect python:3.15-alpine | \
-            python3 -c "import sys,json; print(json.load(sys.stdin)['manifests'][0]['digest'])")
-          echo "digest=sha256:$DIGEST" >> "$GITHUB_OUTPUT"
-          echo "Base image digest: sha256:$DIGEST"
+            python3 -c "import sys,json; d=json.load(sys.stdin)['manifests'][0]['digest']; print(d if d.startswith('sha256:') else 'sha256:'+d)")
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "Base image digest: $DIGEST"
 
       - name: Build image (no push yet — scan first)
+        # Loads into the local daemon with BOTH tags so the scan steps
+        # below verify THIS build, not the stale registry :latest (the
+        # local :latest would otherwise shadow the registry image on
+        # PR runs and after base-image drift, silently scanning old bits).
         uses: docker/build-push-action@v6
         with:
           context: .
           push: false
           load: true  # load into local daemon for scanning
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            yfps/ci:scan-target
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             BASE_IMAGE_DIGEST=${{ steps.base.outputs.digest }}
@@ -114,20 +128,21 @@ jobs:
 
       - name: Generate SBOM (workflow artifact)
         # Software Bill of Materials as a downloadable workflow artifact
-        # for quick human audits. The authoritative copy is attached to the
-        # image itself as an OCI attestation in the push step below.
+        # for quick human audits. The authoritative copy is attached to
+        # the image itself as an OCI attestation in the push step below.
         uses: anchore/sbom-action@v0
         with:
-          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          image: yfps/ci:scan-target
           format: cyclonedx-json
           artifact-name: sbom.cdx.json
 
       - name: Vulnerability scan (gate)
         # Fails the build on CRITICAL/HIGH CVEs before anything is published.
-        # trivy-action pinned to commit SHA (supply-chain protection).
+        # Scans the build from THIS run (yfps/ci:scan-target), never a stale
+        # registry tag. trivy-action pinned to commit SHA (supply-chain).
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          image-ref: yfps/ci:scan-target
           severity: CRITICAL,HIGH
           exit-code: 1
           ignore-unfixed: true
@@ -158,6 +173,7 @@ jobs:
     name: E2E smoke test (container start)
     runs-on: ubuntu-latest
     needs: [lint, test]
+    permissions: {}  # e2e needs no token scopes
     steps:
       - uses: actions/checkout@v5
 
