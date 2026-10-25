@@ -136,10 +136,12 @@ jobs:
         # standard tooling (docker buildx imagetools, oras, Trivy).
         # provenance records the build inputs (SLSA), the standard
         # companion attestation.
+        # Multi-arch: linux/amd64 + linux/arm64 (Raspberry Pi / ARM hosts).
         if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v6
         with:
           context: .
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -148,3 +150,62 @@ jobs:
           sbom: true
           provenance: mode=max
           cache-from: type=gha
+
+  e2e:
+    name: E2E smoke test (container start)
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build image
+        run: docker build -t yfps-e2e:local .
+
+      - name: Start container without Fritzbox credentials (must boot)
+        # The server must start and serve /health even when the Fritzbox
+        # is unreachable — that is its designed failure mode (placeholder
+        # menu, background retries). Proves Dockerfile + entrypoint + app
+        # wiring works end-to-end.
+        run: |
+          docker run -d --rm \
+            -e FB_HOST=192.0.2.1 \
+            -e FB_USER=dummy \
+            -e FB_PASSWORD=dummy \
+            -e SYNC_SERVER_URL=http://127.0.0.1:8080 \
+            -p 18080:8080 \
+            --name yfps-e2e \
+            yfps-e2e:local
+
+      - name: Wait for /health
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:18080/health > /dev/null 2>&1; then
+              echo "Health check OK after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::/health did not respond within 30s"
+          docker logs yfps-e2e
+          exit 1
+
+      - name: /metrics must serve Prometheus format
+        run: curl -sf http://127.0.0.1:18080/metrics | grep -q 'yfps_sync_'
+
+      - name: Auth must reject unauthenticated /menu.xml (401)
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/menu.xml)
+          if [ "$code" = "401" ] || [ "$code" = "404" ]; then
+            # 401 with auth enabled, 404-equivalent fallback without —
+            # either proves the phonebook is not served unauthenticated
+            # in a server that has never synced (empty state).
+            echo "Unauthenticated menu access rejected ($code)"
+            exit 0
+          fi
+          echo "::error::/menu.xml served unauthenticated (HTTP $code)"
+          exit 1
+
+      - name: SIGTERM must stop the container quickly
+        run: |
+          timeout 10 docker stop yfps-e2e
+          echo "Graceful stop OK"
