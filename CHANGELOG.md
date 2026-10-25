@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-25
+
+### Security
+
+- **Container image CVE cleanup:** the published image now passes a Trivy
+  scan with zero CRITICAL/HIGH findings. Previously the `python:3.15-alpine`
+  base image bundled vulnerable pip packages (CRITICAL certifi
+  GHSA-6q48-6c7w-9gw2; HIGH setuptools CVE-2025-47273, urllib3
+  CVE-2026-97687/CVE-2026-97689, msgpack GHSA-6v7p-g79w-8964). The build
+  now upgrades them and removes pip (a build-time tool whose vendored
+  copies are not reachable by upgrades) from the runtime image.
+  The application code itself was never affected — none of these packages
+  are imported at runtime.
+
+### Added
+
+- **Vulnerability scanning, two layers:**
+  - Build gate in CI: images are built, Trivy-scanned (CRITICAL/HIGH,
+    fixable only), and only pushed to GHCR if the scan passes.
+  - Weekly re-scan of the published `:latest` image (CVE databases change
+    daily), with SARIF upload to the GitHub Security tab.
+- **Automatic tracking issue:** when the weekly scan finds fixable
+  CRITICAL/HIGH vulnerabilities, a labeled GitHub issue is opened
+  automatically (no duplicates while one is open), so findings cannot
+  silently rot in the Actions tab.
+
+### Changed
+
+- `trivy-action` is pinned to a commit SHA (supply-chain protection).
+
 ## [0.1.1] - 2026-10-25
 
 ### Security
