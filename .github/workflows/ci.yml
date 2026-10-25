@@ -165,13 +165,16 @@ jobs:
         # The server must start and serve /health even when the Fritzbox
         # is unreachable — that is its designed failure mode (placeholder
         # menu, background retries). Proves Dockerfile + entrypoint + app
-        # wiring works end-to-end.
+        # wiring works end-to-end. Auth is enabled to test the productive
+        # configuration end-to-end.
         run: |
           docker run -d --rm \
             -e FB_HOST=192.0.2.1 \
             -e FB_USER=dummy \
             -e FB_PASSWORD=dummy \
             -e SYNC_SERVER_URL=http://127.0.0.1:8080 \
+            -e SYNC_AUTH_USER=e2euser \
+            -e SYNC_AUTH_PASSWORD=e2epass \
             -p 18080:8080 \
             --name yfps-e2e \
             yfps-e2e:local
@@ -193,17 +196,21 @@ jobs:
         run: curl -sf http://127.0.0.1:18080/metrics | grep -q 'yfps_sync_'
 
       - name: Auth must reject unauthenticated /menu.xml (401)
+        # Auth is enabled in this container (SYNC_AUTH_USER set) — an
+        # unauthenticated request must get 401, and correct credentials
+        # must get 200 with the placeholder menu.
         run: |
           code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/menu.xml)
-          if [ "$code" = "401" ] || [ "$code" = "404" ]; then
-            # 401 with auth enabled, 404-equivalent fallback without —
-            # either proves the phonebook is not served unauthenticated
-            # in a server that has never synced (empty state).
-            echo "Unauthenticated menu access rejected ($code)"
-            exit 0
+          if [ "$code" != "401" ]; then
+            echo "::error::/menu.xml not protected by auth (HTTP $code, expected 401)"
+            exit 1
           fi
-          echo "::error::/menu.xml served unauthenticated (HTTP $code)"
-          exit 1
+          code=$(curl -s -o /dev/null -w '%{http_code}' -u e2euser:e2epass http://127.0.0.1:18080/menu.xml)
+          if [ "$code" != "200" ]; then
+            echo "::error::/menu.xml rejected correct credentials (HTTP $code)"
+            exit 1
+          fi
+          echo "Auth enforced: unauthenticated 401, authenticated 200"
 
       - name: SIGTERM must stop the container quickly
         run: |

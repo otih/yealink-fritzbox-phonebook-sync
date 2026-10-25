@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-10-25
+
+### Fixed
+
+- **E2E smoke test tested the wrong configuration:** the CI container
+  started without `SYNC_AUTH_USER`/`SYNC_AUTH_PASSWORD`, so auth was
+  correctly disabled and the 401 assertion failed on a 200. The E2E job
+  now enables auth (productive configuration) and asserts both sides:
+  unauthenticated → 401, correct credentials → 200.
+
 ## [0.3.1] - 2026-10-25
 
 ### Changed
