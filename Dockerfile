@@ -9,9 +9,16 @@ LABEL org.opencontainers.image.description="Fritzbox → Yealink phonebook sync 
 LABEL org.opencontainers.image.source="https://github.com/local/yealink-fritzbox-phonebook-sync"
 
 # tini: minimal init for proper PID 1 signal forwarding (SIGTERM on docker stop)
+# pip packages are upgraded to clear known CVEs in the base image's bundled
+# tooling (certifi, setuptools, urllib3, msgpack), then pip itself is
+# removed: it (and its vendored urllib3 copy) is a build-time tool with no
+# runtime purpose here — Trivy gates on these findings.
 RUN apk add --no-cache tini \
     && addgroup -S app \
-    && adduser -S -G app -h /app app
+    && adduser -S -G app -h /app app \
+    && pip install --no-cache-dir --upgrade pip setuptools certifi urllib3 msgpack \
+    && pip cache purge \
+    && rm -rf /usr/local/lib/python3*/site-packages/pip*
 
 WORKDIR /app
 

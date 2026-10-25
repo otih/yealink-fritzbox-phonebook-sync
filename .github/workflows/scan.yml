@@ -1,0 +1,41 @@
+name: Vulnerability Scan
+
+on:
+  # Re-scan the published image weekly — the CVE database changes daily,
+  # so a clean build today can have new findings tomorrow.
+  schedule:
+    - cron: '0 4 * * 1'  # Mondays 04:00 UTC
+  # Manual trigger
+  workflow_dispatch:
+  # Scan during the release process (tag pushes)
+  push:
+    tags: ['v*']
+
+env:
+  IMAGE: ghcr.io/otih/yealink-fritzbox-phonebook-sync
+
+jobs:
+  scan:
+    name: Trivy scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write  # upload SARIF to GitHub Security tab
+
+    steps:
+      - name: Scan published image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0, SHA-pinned
+        with:
+          image-ref: ${{ env.IMAGE }}:latest
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          exit-code: 1  # fail the workflow on critical/high findings
+          ignore-unfixed: true  # don't fail on CVEs without an available patch
+          vuln-type: os,library
+
+      - name: Upload results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()  # upload even if the scan failed, so findings are visible
+        with:
+          sarif_file: trivy-results.sarif
