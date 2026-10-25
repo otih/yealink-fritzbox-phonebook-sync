@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-25
+
 ### Added
 
 - **Phone-side fetch metrics:** `yfps_phonebook_fetch_total` (counter),
