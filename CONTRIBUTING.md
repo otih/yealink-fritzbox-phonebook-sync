@@ -29,11 +29,17 @@ Both tools install with `pip install ruff pytest`.
 3. **Keep the changelog current.** Every user- or security-relevant change
    gets its entry under `[Unreleased]` in `CHANGELOG.md` **in the same
    commit** as the change — never bundled later into the release.
-4. **No breaking changes without a major version bump.** Existing env vars,
+4. **Docs are part of the feature.** Before finishing any change, check
+   whether the README, the docs site (`docs/`), `.env.example`, or the
+   CHANGELOG need updating — new config → `.env.example` +
+   `docs/configuration.md` + README table; new endpoint/behavior → README +
+   `docs/index.md`; user-visible change → CHANGELOG. Update them in the
+   same commit as the feature.
+5. **No breaking changes without a major version bump.** Existing env vars,
    CLI flags, XML output format, and HTTP endpoints must keep working.
    If a change is unavoidable, document it in the changelog and bump the
    major version.
-5. **Test against real hardware before submitting.** At minimum: build the
+6. **Test against real hardware before submitting.** At minimum: build the
    Docker image (`docker build .`) and check that the container boots and
    `/health` responds. Ideally, verify against a real Fritzbox + Yealink.
 
