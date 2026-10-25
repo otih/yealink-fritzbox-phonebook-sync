@@ -86,6 +86,16 @@ jobs:
             type=sha,prefix=sha-
             type=raw,value=latest,enable={{is_default_branch}}
 
+      - name: Resolve base image digest
+        # Pin the exact base-image build the image is based on; recorded as
+        # an OCI label (org.opencontainers.image.base.digest) via build-arg.
+        id: base
+        run: |
+          DIGEST=$(docker manifest inspect python:3.15-alpine | \
+            python3 -c "import sys,json; print(json.load(sys.stdin)['manifests'][0]['digest'])")
+          echo "digest=sha256:$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "Base image digest: sha256:$DIGEST"
+
       - name: Build image (no push yet — scan first)
         uses: docker/build-push-action@v6
         with:
@@ -94,8 +104,20 @@ jobs:
           load: true  # load into local daemon for scanning
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BASE_IMAGE_DIGEST=${{ steps.base.outputs.digest }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Generate SBOM
+        # Software Bill of Materials: full component inventory incl. the
+        # base-image relationship — attached as a build artifact so anyone
+        # can audit exactly what is in the image.
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          format: cyclonedx-json
+          artifact-name: sbom.cdx.json
 
       - name: Vulnerability scan (gate)
         # Fails the build on CRITICAL/HIGH CVEs before anything is published.

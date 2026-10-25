@@ -8,6 +8,16 @@ LABEL org.opencontainers.image.title="yealink-fritzbox-phonebook-sync"
 LABEL org.opencontainers.image.description="Fritzbox → Yealink phonebook sync server"
 LABEL org.opencontainers.image.source="https://github.com/local/yealink-fritzbox-phonebook-sync"
 
+# Build provenance labels — `docker inspect` shows what this image is built on.
+# org.opencontainers.image.base.name/digest answer "which base, exactly?" and
+# base.version records the resolved tag. The digest is filled in by CI to pin
+# the exact base-image build (docker build --build-arg), keeping local builds
+# working without it.
+ARG BASE_IMAGE_DIGEST=""
+LABEL org.opencontainers.image.base.name="docker.io/library/python:3.15-alpine"
+LABEL org.opencontainers.image.base.digest="${BASE_IMAGE_DIGEST}"
+LABEL org.opencontainers.image.base.version="3.15-alpine"
+
 # tini: minimal init for proper PID 1 signal forwarding (SIGTERM on docker stop)
 # pip packages are upgraded to clear known CVEs in the base image's bundled
 # tooling (certifi, setuptools, urllib3, msgpack), then pip itself is

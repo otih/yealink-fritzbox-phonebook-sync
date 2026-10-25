@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Base-image provenance labels:** the Docker image now records what it is
+  built on via OCI labels — `org.opencontainers.image.base.name`,
+  `base.digest` (exact base-image build, resolved and pinned by CI), and
+  `base.version`. Visible via `docker inspect`. Local builds without CI
+  set the digest label to empty.
+- **SBOM as build artifact:** CI generates a CycloneDX software bill of
+  materials for each build and attaches it as a workflow artifact — a
+  complete, auditable component inventory including the base-image
+  relationship.
+
 ## [0.1.2] - 2026-10-25
 
 ### Security
