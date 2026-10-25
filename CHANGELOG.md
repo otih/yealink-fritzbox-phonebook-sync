@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Sorted, deduplicated contacts:** directory entries are now sorted
+  alphabetically (case-insensitive, German umlaut folding — "Ärger" sorts
+  under A) and contacts with the same name in one phonebook merge into a
+  single entry (numbers combined; duplicate numbers collapse to one
+  `<Telephone>`, the first non-empty label wins). The same name in two
+  different phonebooks stays separate — dedup is scoped to one phonebook.
+
 ## [0.7.0] - 2026-10-25
 
 ### Added

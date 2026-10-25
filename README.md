@@ -253,6 +253,7 @@ when configured.
    - Multiple `<Telephone>` elements inside each entry if the person has several numbers
    - Each `<Telephone>` gets a `label` attribute mapped from the Fritzbox number type (Mobil, Festnetz, Arbeit, Fax, Sonstige)
    - Internal Fritzbox numbers (`**9`, `**600`, etc.) are filtered out
+   - Contacts are sorted alphabetically (case-insensitive, umlaut-aware); contacts with the same name in one phonebook are merged into a single entry — the same name in different phonebooks stays separate
    - The phonebook name is extracted from the Fritzbox XML and used as the menu label
 5. **Menu** — builds a `YealinkIPPhoneMenu` listing all non-empty phonebooks as selectable `<MenuItem>` entries, each showing the phonebook name and contact count (e.g. "Work (193)"). Each item links to its own `/contacts/<id>.xml` endpoint.
 6. **Serve** — `/menu.xml` and `/contacts/<id>.xml` are served over plain HTTP (HTTP/1.1 with `Connection: close`).

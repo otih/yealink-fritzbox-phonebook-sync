@@ -496,6 +496,37 @@ TYPE_LABELS = {
 }
 
 
+def _sort_key(name: str) -> str:
+    """Fold a contact name into its sort/dedup key.
+
+    Lowercase + German umlaut folding ("Ärger" → "arger") so contacts sort
+    under their base letter (German collation treats Ä as A) and names
+    differing only in case/umlauts merge to one entry.
+    """
+    folded = name.lower()
+    for src, dst in (("ä", "a"), ("ö", "o"), ("ü", "u"), ("ß", "ss")):
+        folded = folded.replace(src, dst)
+    return folded
+
+
+def _extract_numbers(numbers_elem: ET.Element) -> list[tuple[str, str]]:
+    """Extract (normalized_number, label) pairs from a <telephony>/<numbers> element.
+
+    Internal Fritzbox numbers (**9, **600, etc.) are skipped.
+    """
+    numbers: list[tuple[str, str]] = []
+    for child in numbers_elem:
+        if _strip_ns(child.tag) == "number":
+            num = (child.text or "").strip()
+            # Skip internal Fritzbox numbers (**9, **600, etc.)
+            if num and not num.startswith("**"):
+                num = _normalize_number(num)
+                num_type = child.get("type", "")
+                label = TYPE_LABELS.get(num_type, "")
+                numbers.append((num, label))
+    return numbers
+
+
 def convert_single_phonebook(fritzbox_xml_bytes: bytes) -> tuple[str, str, int]:
     """
     Convert a single Fritzbox phonebook XML to Yealink DirectoryEntry format.
@@ -504,6 +535,13 @@ def convert_single_phonebook(fritzbox_xml_bytes: bytes) -> tuple[str, str, int]:
     Uses the YealinkIPPhoneDirectory format documented for the AX83H.
     Each <Telephone> gets a label attribute mapped from the Fritzbox number type.
     Internal Fritzbox numbers (**9, **600, etc.) are filtered out.
+
+    Contacts are deduplicated WITHIN one phonebook: entries with the same
+    folded name merge into one DirectoryEntry (numbers combined; duplicate
+    numbers collapse to a single <Telephone>, first non-empty label wins).
+    The same name in two different <phonebook> elements is NOT merged.
+    Output is sorted alphabetically (case-insensitive, umlaut-folded) —
+    the phone shows a sorted directory, not Fritzbox delivery order.
     """
     root = ET.fromstring(fritzbox_xml_bytes)  # noqa: S314 — trusted Fritzbox source, see security note
 
@@ -520,6 +558,10 @@ def convert_single_phonebook(fritzbox_xml_bytes: bytes) -> tuple[str, str, int]:
     for phonebook in root.iter():
         if _strip_ns(phonebook.tag) != "phonebook":
             continue
+        # Dedup map is scoped to ONE phonebook element: the same name in
+        # two different <phonebook> blocks must remain separate entries.
+        # key → [display_name, [(number, label), ...]]
+        merged: dict[str, list] = {}
         for contact in phonebook:
             if _strip_ns(contact.tag) != "contact":
                 continue
@@ -550,23 +592,33 @@ def convert_single_phonebook(fritzbox_xml_bytes: bytes) -> tuple[str, str, int]:
             if numbers_elem is None:
                 continue
 
-            numbers = []
-            for child in numbers_elem:
-                if _strip_ns(child.tag) == "number":
-                    num = (child.text or "").strip()
-                    # Skip internal Fritzbox numbers (**9, **600, etc.)
-                    if num and not num.startswith("**"):
-                        num = _normalize_number(num)
-                        num_type = child.get("type", "")
-                        label = TYPE_LABELS.get(num_type, "")
-                        numbers.append((num, label))
+            numbers = _extract_numbers(numbers_elem)
 
             if not numbers:
                 continue
 
-            # Emit one <DirectoryEntry> with all numbers
+            # Merge contacts sharing the same folded name (within this
+            # phonebook): numbers are combined, duplicate numbers collapse
+            # to one <Telephone> keeping the first non-empty label.
+            key = _sort_key(name)
+            if key not in merged:
+                merged[key] = [name, []]
+            existing = merged[key][1]
+            for num, label in numbers:
+                for i, (enum, elabel) in enumerate(existing):
+                    if enum == num:
+                        if not elabel and label:
+                            existing[i] = (enum, label)
+                        break
+                else:
+                    existing.append((num, label))
+
+        # Emit sorted by folded name — case-insensitive, umlaut-aware.
+        # Display names keep their original casing ("Zorro", not "zorro").
+        for key in sorted(merged):
+            display_name, numbers = merged[key]
             lines.append("  <DirectoryEntry>")
-            lines.append("    <Name>%s</Name>" % _escape_xml(name))
+            lines.append("    <Name>%s</Name>" % _escape_xml(display_name))
             for num, label in numbers:
                 if label:
                     lines.append(
