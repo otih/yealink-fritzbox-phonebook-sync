@@ -14,28 +14,91 @@ on:
 env:
   IMAGE: ghcr.io/otih/yealink-fritzbox-phonebook-sync
 
+permissions:
+  contents: read
+  security-events: write  # upload SARIF to GitHub Security tab
+  issues: write           # create a tracking issue on findings
+
 jobs:
   scan:
     name: Trivy scan
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write  # upload SARIF to GitHub Security tab
 
     steps:
       - name: Scan published image
+        id: trivy
+        # Scans with exit-code 0 first: we want the full report (SARIF) and
+        # the summary step to run even when findings exist, then decide.
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0, SHA-pinned
         with:
           image-ref: ${{ env.IMAGE }}:latest
           format: sarif
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
-          exit-code: 1  # fail the workflow on critical/high findings
-          ignore-unfixed: true  # don't fail on CVEs without an available patch
+          exit-code: 0
+          ignore-unfixed: true  # report only CVEs with an available patch
           vuln-type: os,library
+
+      - name: Count findings
+        id: findings
+        run: |
+          COUNT=$(python3 - <<'EOF'
+          import json
+          with open('trivy-results.sarif') as f:
+              sarif = json.load(f)
+          runs = sarif.get('runs', [])
+          total = sum(len(r.get('results', [])) for r in runs)
+          print(total)
+          EOF
+          )
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "Findings (CRITICAL/HIGH, fixed available): $COUNT"
 
       - name: Upload results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
         if: always()  # upload even if the scan failed, so findings are visible
         with:
           sarif_file: trivy-results.sarif
+
+      # Create a tracking issue so findings cannot silently rot in the
+      # Actions tab. Skips if an open scan issue already exists (label).
+      - name: Open tracking issue on findings
+        if: steps.findings.outputs.count != '0'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const label = 'vulnerability-scan';
+            const openIssues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: label,
+            });
+            if (openIssues.data.length > 0) {
+              console.log(`Open ${label} issue already exists (#${openIssues.data[0].number}) — not duplicating.`);
+              return;
+            }
+            const count = ${{ steps.findings.outputs.count }};
+            const date = new Date().toISOString().slice(0, 10);
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🔒 Vulnerability scan found ${count} fixable CRITICAL/HIGH finding(s) (${date})`,
+              labels: [label],
+              body: [
+                `The weekly Trivy scan of \`${process.env.IMAGE}:latest\` found **${count}** fixable CRITICAL/HIGH vulnerability/vulnerabilities.`,
+                '',
+                '**Details:** see the [Security tab](https://github.com/' + context.repo.owner + '/' + context.repo.repo + '/security) (SARIF) and the [scan run](https://github.com/' + context.repo.owner + '/' + context.repo.repo + '/actions).',
+                '',
+                '**Remedy:** pull the latest base image, rebuild, cut a patch release — the CI build gate re-verifies before publishing.',
+                '',
+                'This issue was created automatically by the Vulnerability Scan workflow. It closes the gap where a failed scheduled scan would otherwise be visible only in the Actions tab.',
+              ].join('\n'),
+            });
+            console.log('Tracking issue created.');
+
+      - name: Fail the workflow on findings
+        if: steps.findings.outputs.count != '0'
+        run: |
+          echo "::error::Vulnerability scan found ${{ steps.findings.outputs.count }} fixable CRITICAL/HIGH finding(s) — see the tracking issue and Security tab."
+          exit 1
