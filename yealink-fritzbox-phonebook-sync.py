@@ -90,6 +90,27 @@ def _escape_xml(text):
     )
 
 
+def _normalize_number(num):
+    """Normalize a phone number for reliable Caller-ID matching.
+
+    Removes formatting characters (spaces, dashes, slashes, parentheses,
+    dots) that the Fritzbox stores but that break exact Caller-ID matching
+    on the phone. The German "(0)" trunk-prefix notation inside an
+    international number is dropped (+49 (0)170… → +49170…), since the
+    zero only applies to national dialing. Keeps the leading '+';
+    returns SIP URIs (containing '@') unchanged so dialable addresses
+    survive.
+    """
+    if "@" in num:
+        return num
+    # "+49 (0) 170/…" → "+49 170/…" — the parenthesized trunk zero is
+    # redundant in international format.
+    num = num.replace("(0)", "")
+    for ch in " -/().":
+        num = num.replace(ch, "")
+    return num
+
+
 # ---------------------------------------------------------------------------
 # Fritzbox TR-064 SOAP client
 # ---------------------------------------------------------------------------
@@ -410,6 +431,7 @@ def convert_single_phonebook(fritzbox_xml_bytes):
                     num = (child.text or "").strip()
                     # Skip internal Fritzbox numbers (**9, **600, etc.)
                     if num and not num.startswith("**"):
+                        num = _normalize_number(num)
                         num_type = child.get("type", "")
                         label = TYPE_LABELS.get(num_type, "")
                         numbers.append((num, label))
@@ -472,6 +494,8 @@ class State:
         self.pb_meta = []  # [{id, name, count}]
         self.last_sync = 0
         self.total_contacts = 0
+        self.sync_successes = 0
+        self.sync_failures = 0
         self.lock = threading.Lock()
 
 
@@ -545,6 +569,34 @@ class PhonebookHandler(BaseHTTPRequestHandler):
                 logger.debug("%s - GET /health 200", self.client_address[0])
             return
 
+        # Prometheus metrics — always open (same rationale as /health:
+        # exposes operational counters, no contact data)
+        if self.path == "/metrics":
+            with state.lock:
+                age = int(time.time() - state.last_sync) if state.last_sync else -1
+                lines = [
+                    "# HELP yfps_sync_success_total Number of successful sync cycles",
+                    "# TYPE yfps_sync_success_total counter",
+                    "yfps_sync_success_total %d" % state.sync_successes,
+                    "# HELP yfps_sync_failure_total Number of failed sync cycles",
+                    "# TYPE yfps_sync_failure_total counter",
+                    "yfps_sync_failure_total %d" % state.sync_failures,
+                    "# HELP yfps_sync_last_timestamp_seconds Unix timestamp of the last successful sync",
+                    "# TYPE yfps_sync_last_timestamp_seconds gauge",
+                    "yfps_sync_last_timestamp_seconds %d" % int(state.last_sync),
+                    "# HELP yfps_sync_age_seconds Seconds since the last successful sync (-1 = never)",
+                    "# TYPE yfps_sync_age_seconds gauge",
+                    "yfps_sync_age_seconds %d" % age,
+                    "# HELP yfps_contacts_total Total contacts across all phonebooks",
+                    "# TYPE yfps_contacts_total gauge",
+                    "yfps_contacts_total %d" % state.total_contacts,
+                    "# HELP yfps_phonebooks_total Number of phonebooks served",
+                    "# TYPE yfps_phonebooks_total gauge",
+                    "yfps_phonebooks_total %d" % len(state.pb_meta),
+                ]
+            self._serve("\n".join(lines) + "\n", content_type="text/plain; version=0.0.4")
+            return
+
         # All other endpoints require auth
         if not self._require_auth():
             return
@@ -595,6 +647,19 @@ class PhonebookHandler(BaseHTTPRequestHandler):
 # Sync loop
 # ---------------------------------------------------------------------------
 
+BACKOFF_BASE_SECONDS = 60
+
+
+def _backoff_delay(consecutive_failures, refresh_interval):
+    """Exponential retry delay after failed syncs.
+
+    60s, 120s, 240s, ... capped at the regular refresh interval, so a
+    Fritzbox reboot recovers within minutes instead of after the full hour,
+    while a persistently unreachable box is not hammered every minute.
+    """
+    delay = BACKOFF_BASE_SECONDS * (2**consecutive_failures)
+    return min(delay, refresh_interval)
+
 
 def sync_once(client, phonebook_ids, server_base, external_url):
     """Perform one sync cycle. Raises on failure — caller handles retries.
@@ -632,12 +697,18 @@ def sync_once(client, phonebook_ids, server_base, external_url):
         state.pb_meta = pb_meta
         state.last_sync = time.time()
         state.total_contacts = total
+        state.sync_successes += 1
     logger.info("Sync complete: %d phonebooks, %d total contacts", len(pb_meta), total)
 
 
 def sync_loop(client, phonebook_ids, server_base, external_url, refresh_interval):
-    """Background thread: periodic sync with automatic retry."""
+    """Background thread: periodic sync with exponential backoff on failure.
+
+    After a failed sync the retry delay grows (60s, 120s, 240s, ...) capped
+    at the refresh interval; a successful sync resets the backoff.
+    """
     pb_ids = list(phonebook_ids)
+    consecutive_failures = 0
     while True:
         if not pb_ids:
             try:
@@ -645,12 +716,24 @@ def sync_loop(client, phonebook_ids, server_base, external_url, refresh_interval
                 logger.info("Auto-detected phonebook IDs: %s", pb_ids)
             except Exception as exc:
                 logger.warning("Still cannot detect phonebook IDs: %s", exc)
-                time.sleep(refresh_interval)
+                with state.lock:
+                    state.sync_failures += 1
+                time.sleep(_backoff_delay(consecutive_failures, refresh_interval))
+                consecutive_failures += 1
                 continue
         try:
             sync_once(client, pb_ids, server_base, external_url)
+            consecutive_failures = 0
         except Exception as exc:
-            logger.warning("Sync failed (will retry in %ds): %s", refresh_interval, exc)
+            delay = _backoff_delay(consecutive_failures, refresh_interval)
+            logger.warning(
+                "Sync failed (retry %d in %ds): %s", consecutive_failures + 1, delay, exc
+            )
+            with state.lock:
+                state.sync_failures += 1
+            consecutive_failures += 1
+            time.sleep(delay)
+            continue
         time.sleep(refresh_interval)
 
 
