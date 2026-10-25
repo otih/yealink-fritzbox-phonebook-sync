@@ -59,7 +59,7 @@ import threading
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.request import urlopen
 
 logger = logging.getLogger("fritz-pb-sync")
@@ -79,12 +79,23 @@ class _RateLimiter:
         self._failures: dict[str, list[float]] = {}
         self._lock = threading.Lock()
 
+    def _cleanup(self, now: float) -> None:
+        """Drop expired failure entries for all IPs (bounded memory in 24/7)."""
+        for ip in list(self._failures.keys()):
+            timestamps = [t for t in self._failures[ip] if now - t < self.window_seconds]
+            if timestamps:
+                self._failures[ip] = timestamps
+            else:
+                del self._failures[ip]
+
     def record_failure(self, ip: str) -> None:
         with self._lock:
             now = time.monotonic()
             self._failures.setdefault(ip, []).append(now)
             # Drop expired entries while we are here
             self._failures[ip] = [t for t in self._failures[ip] if now - t < self.window_seconds]
+            # Global hygiene: expired IPs from other clients must not pile up
+            self._cleanup(now)
 
     def record_success(self, ip: str) -> None:
         with self._lock:
@@ -617,6 +628,16 @@ auth_pass = ""
 rate_limiter = _RateLimiter()
 ip_allowlist = _IpAllowlist("")
 
+# Threading server: one hung client must never block the health check
+# (24/7 requirement — a single-threaded server would let Docker's
+# HEALTHCHECK time out and restart-loop the container).
+_SERVER_CLASS = ThreadingHTTPServer
+
+
+def _make_server(host: str, port: int) -> ThreadingHTTPServer:
+    """Create the (threading) HTTP server — factory for tests and main."""
+    return _SERVER_CLASS((host, port), PhonebookHandler)
+
 
 def _placeholder_menu(server_base: str) -> str:
     """Empty menu served before the first successful sync."""
@@ -1049,7 +1070,7 @@ def main() -> None:
     # HTTP server — binding to all interfaces (S104) is intentional:
     # the Yealink phone on the LAN must be able to reach this server.
     # Restrict via container network policy or a reverse proxy if needed.
-    srv = HTTPServer(("0.0.0.0", args.listen_port), PhonebookHandler)  # noqa: S104
+    srv = _SERVER_CLASS(("0.0.0.0", args.listen_port), PhonebookHandler)  # noqa: S104
     logger.info("=" * 60)
     logger.info("Listening on http://0.0.0.0:%d", args.listen_port)
     logger.info("Yealink Remote Phonebook URL: %s/menu.xml", args.server_url.rstrip("/"))

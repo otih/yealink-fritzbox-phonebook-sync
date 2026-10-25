@@ -24,7 +24,7 @@ _SPEC.loader.exec_module(yfps)
 @pytest.fixture()
 def server():
     """Start the real HTTP server on an ephemeral port; yield (base_url, state)."""
-    srv = yfps.HTTPServer(("127.0.0.1", 0), yfps.PhonebookHandler)
+    srv = yfps._make_server("127.0.0.1", 0)
     port = srv.server_address[1]
     thread = threading.Thread(target=srv.serve_forever, daemon=True)
     thread.start()
