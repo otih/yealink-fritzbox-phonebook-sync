@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Threading HTTP server (24/7):** requests are served in parallel —
+  a hung client (e.g. a phone with a dropped connection) can no longer
+  block `/health` and other clients, which previously risked Docker
+  health-check restart loops. Regression-tested with a concurrency suite
+  (20 parallel requests alongside a deliberately hung socket).
+- **Rate-limiter memory hygiene (24/7):** expired per-IP failure entries
+  are cleaned up globally on each failure, keeping the dict bounded in
+  long-running deployments.
+- **Weekly base-image rebuild workflow:** Mondays 04:30 UTC (after the
+  vulnerability scan) the workflow detects a moved `python:3.15-alpine`
+  digest, commits the new digest, and thereby triggers the full CI —
+  fresh images flow through the usual tests and CVE gate to `:main` /
+  `:latest`. Version releases stay an explicit decision.
+- **Dependabot:** weekly update PRs for GitHub Actions versions and the
+  Docker base image, each subject to the full CI pipeline.
+- **Soak test (evidence, not CI):** 2000 requests, 50 parallel clients,
+  0 failures, 848 req/s, p95 57ms, 0 container restarts — verified
+  against the locally built container.
+
+### Changed
+
+- README documents the three-layer vulnerability management (build gate,
+  weekly re-scan, weekly rebuild) and Dependabot.
+
 ## [0.4.0] - 2026-10-25
 
 ### Added

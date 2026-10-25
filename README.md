@@ -262,6 +262,25 @@ when configured.
 
 The Fritzbox TR-064 endpoint behaves unconventionally with Python's `http.client`: it sometimes returns HTTP 500 with a SOAP fault ("invalid action") instead of a proper HTTP 401 digest challenge. The server therefore uses raw IPv6 sockets to send the SOAP POST, read the 401 + `WWW-Authenticate` header, compute the digest response, and resend with authentication. This mirrors what `curl --digest` does internally. A retry loop handles the Fritzbox's inconsistency (sometimes 401, sometimes 500 on the first request).
 
+## Vulnerability management (automated)
+
+Three layers keep the published image safe around the clock:
+
+1. **Build gate** — every image is Trivy-scanned (CRITICAL/HIGH, fixable)
+   before it is pushed to GHCR; a finding blocks publication.
+2. **Weekly re-scan** — Mondays 04:00 UTC the published `:latest` image is
+   re-scanned against the current CVE database; findings open a labeled
+   tracking issue automatically and the run goes red.
+3. **Weekly rebuild** — Mondays 04:30 UTC (after the scan) the workflow
+   detects whether the base image digest moved; if so it commits the new
+   digest, which triggers the full CI pipeline (tests + CVE gate) and
+   publishes fresh `:main` / `:latest` images. Version releases remain a
+   human/AI-agent decision.
+
+**Dependabot** opens update PRs weekly for GitHub Actions versions and the
+Docker base image; every PR must pass the full CI (lint, types, tests,
+E2E, coverage gate) before merging.
+
 ## Container hardening
 
 The Docker image and Kubernetes manifests follow security best practices:

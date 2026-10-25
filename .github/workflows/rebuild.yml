@@ -1,0 +1,49 @@
+name: Weekly Image Rebuild
+
+on:
+  # Rebuild Mondays after the vulnerability scan (04:00 UTC) so a changed
+  # base image gets picked up and published in the same cycle.
+  schedule:
+    - cron: '30 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write   # push the version-bump commit
+  packages: write    # push the image to GHCR
+
+jobs:
+  rebuild:
+    name: Rebuild if base image changed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Detect base image change
+        id: base
+        run: |
+          CURRENT=$(docker manifest inspect python:3.15-alpine | \
+            python3 -c "import sys,json; m=json.load(sys.stdin)['manifests'][0]; print(m['digest'])")
+          LAST=$(cat .github/base-image-digest 2>/dev/null || echo "")
+          if [ "$CURRENT" = "$LAST" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Base image unchanged ($CURRENT) — no rebuild needed."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Base image changed: $LAST -> $CURRENT"
+            echo "$CURRENT" > .github/base-image-digest
+          fi
+
+      - name: Commit updated digest
+        if: steps.base.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/base-image-digest
+          git commit -m "chore: base image digest update (weekly rebuild)"
+          git push
+
+      # The push above triggers the full CI pipeline: lint -> tests ->
+      # E2E -> vulnerability gate -> multi-arch publish with SBOM.
+      # A version tag is NOT pushed automatically — the image flows to
+      # :main and :latest; the maintainer (or the AI agent with release
+      # authority) cuts a version release after reviewing the run.
