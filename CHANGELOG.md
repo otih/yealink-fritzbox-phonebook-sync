@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Per-phonebook contact metric:** `yfps_phonebook_contacts{id="…",
+  name="…"}` on `/metrics` — one gauge line per served phonebook. A
+  shrinking source (e.g. a broken Google import into the Fritzbox) is
+  now visible per phonebook instead of only in the global sum.
+  Alert rule `PhonebookContactsDropped` documented (fires when a
+  phonebook drops below 10 contacts while the server is healthy).
+
 - **Runtime phonebook discovery (auto mode):** with `FB_PHONEBOOK_ID`
   unset, the sync loop re-detects the phonebook ID list on every cycle —
   a phonebook created on the Fritzbox (new Google account, CardDAV source)

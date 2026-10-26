@@ -24,6 +24,7 @@ otherwise) and whether the Fritzbox sync is healthy.
 | `yfps_phonebook_fetch_last_timestamp_seconds` | gauge | Unix timestamp of the last phonebook download by a phone (`0` = never). |
 | `yfps_phonebook_fetch_age_seconds` | gauge | Seconds since a phone last downloaded a phonebook (`-1` = never). Mirrors `yfps_sync_age_seconds` on the phone side. |
 | `yfps_contacts_total` | gauge | Total contacts across all served phonebooks (after filtering). |
+| `yfps_phonebook_contacts{id="…", name="…"}` | gauge | Contact count **per phonebook** (one line per served phonebook). A shrinking source — e.g. a broken Google import into the Fritzbox — is visible per phonebook instead of only in the global sum. |
 | `yfps_phonebooks_total` | gauge | Number of phonebooks currently served. |
 
 **Interpretation guide:** `yfps_sync_age_seconds` should always be below your
@@ -135,6 +136,22 @@ groups:
             More than 10 rejected Basic-Auth attempts in the last hour or
             at least one IP hit the rate limit (429). Check the server logs
             for the source IPs and verify your auth credentials are strong.
+
+      # Data quality: a phonebook lost most of its contacts — usually a
+      # broken upstream import into the Fritzbox (Google/CardDAV token
+      # expired, source deleted). Fires when a phonebook drops below 10
+      # contacts while the server itself is healthy.
+      - alert: PhonebookContactsDropped
+        expr: yfps_phonebook_contacts < 10 and on() yfps_degraded == 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Phonebook {{ $labels.name }} dropped to {{ $value }} contacts"
+          description: >-
+            The phonebook lost most of its contacts while the server is
+            healthy. Check the Fritzbox phonebook and its upstream source
+            (Google/CardDAV sync in the Fritzbox UI).
 
       # Availability: the health endpoint is scraped implicitly by these
       # metrics — if the target is down, Prometheus marks it DOWN.

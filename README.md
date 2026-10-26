@@ -77,6 +77,14 @@ docker compose up -d
 
 The `docker-compose.yml` pins a concrete version by default (`0.9.0`) for reproducible deployments — switch to `latest` if you prefer automatic updates, or `build: .` to build from source.
 
+**Testing unreleased changes:** the CI publishes a `:dev` image from the [`dev` integration branch](https://github.com/otih/yealink-fritzbox-phonebook-sync/tree/dev) on every push (same CVE gates as releases). To run a test host on the bleeding edge, point a copy of the compose file at it:
+
+```yaml
+    image: ghcr.io/otih/yealink-fritzbox-phonebook-sync:dev
+```
+
+`:dev` is for trying things out — pin the release version for anything you rely on.
+
 ### Option B: Kubernetes
 
 ```bash
