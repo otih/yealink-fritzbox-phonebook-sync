@@ -67,7 +67,7 @@ logger = logging.getLogger("fritz-pb-sync")
 # App version: the single source of truth for humans (startup log),
 # the /metrics endpoint (yfps_build_info) and the release process.
 # Bump on every release (keep in sync with CHANGELOG.md and git tags).
-APP_VERSION = "0.9.0"
+APP_VERSION = "0.10.0"
 
 
 class _RateLimiter:
@@ -218,6 +218,26 @@ def _parse_log_level(value: str) -> str:
     if level not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
         raise ValueError("Invalid log level %r (use DEBUG/INFO/WARNING/ERROR/CRITICAL)" % value)
     return level
+
+
+def _parse_bool(value: str, setting: str = "SYNC_DEDUP_CONTACTS") -> bool:
+    """Validate a boolean env value; fail fast on anything unrecognized.
+
+    Empty → False. Accepted truthy: 1/true/yes/on (case-insensitive).
+    Accepted falsy: 0/false/no/off. Anything else raises — a typo like
+    'treu' must abort startup instead of silently disabling the feature
+    (same fail-fast philosophy as _parse_log_level).
+    """
+    if not value:
+        return False
+    normalized = value.strip().lower()
+    if normalized in ("1", "true", "yes", "on"):
+        return True
+    if normalized in ("0", "false", "no", "off"):
+        return False
+    raise ValueError(
+        "Invalid %s value %r (use 1/true/yes/on or 0/false/no/off, empty = off)" % (setting, value)
+    )
 
 
 def _validate_config(cfg: dict) -> None:
@@ -694,6 +714,9 @@ class State:
         # (menu.xml or contacts/<id>.xml)? 0 = never.
         self.last_phone_fetch = 0
         self.phone_fetches = 0
+        # Per-IP phone-side activity: {ip: timestamp}. Bounded to the 10
+        # most recently seen IPs (cardinality safety on /metrics).
+        self.phone_fetch_ips: dict[str, float] = {}
         # Configured sync interval (seconds) — basis for the degraded
         # evaluation on /metrics. 0 = unknown (treated as never degraded).
         self.refresh_interval = 0
@@ -886,16 +909,34 @@ class PhonebookHandler(BaseHTTPRequestHandler):
         self.end_headers()
         return False
 
+    @staticmethod
+    def _prom_escape_label(value: str) -> str:
+        """Escape a string for use inside a Prometheus label value.
+
+        Only backslashes, double quotes and newlines need escaping (Prometheus
+        exposition format); phonebook names with quotes must not break the
+        metric line.
+        """
+        return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
     def _record_phone_fetch(self) -> None:
         """Track phone-side activity: a phonebook was just served to a phone.
 
         Called after successfully serving /menu.xml or /contacts/<id>.xml —
         answers "when did the phone last pull its phonebook?" (mirrors the
-        Fritzbox-side yfps_sync_* metrics).
+        Fritzbox-side yfps_sync_* metrics). Also records the fetching
+        client IP (bounded to the 10 most recently seen) so multi-handset
+        setups can see WHICH phone last pulled.
         """
         with state.lock:
             state.phone_fetches += 1
             state.last_phone_fetch = time.time()
+            ip = self.client_address[0]
+            state.phone_fetch_ips[ip] = time.time()
+            # Cardinality bound: keep only the 10 most recent fetchers
+            if len(state.phone_fetch_ips) > 10:
+                recent = sorted(state.phone_fetch_ips.items(), key=lambda kv: kv[1])[-10:]
+                state.phone_fetch_ips = dict(recent)
 
     def do_GET(self) -> None:
         # /health is always open (needed for Docker HEALTHCHECK, monitoring)
@@ -973,6 +1014,34 @@ class PhonebookHandler(BaseHTTPRequestHandler):
                     "# TYPE yfps_phonebooks_total gauge",
                     "yfps_phonebooks_total %d" % len(state.pb_meta),
                 ]
+                # Per-phonebook contact count — a shrinking source (e.g.
+                # broken Google import into the Fritzbox) is visible per
+                # phonebook, not just in the global sum.
+                if state.pb_meta:
+                    lines.append("# HELP yfps_phonebook_contacts Contact count per phonebook")
+                    lines.append("# TYPE yfps_phonebook_contacts gauge")
+                    for pb in state.pb_meta:
+                        lines.append(
+                            'yfps_phonebook_contacts{id="%d",name="%s"} %d'
+                            % (
+                                pb["id"],
+                                self._prom_escape_label(pb["name"]),
+                                pb["count"],
+                            )
+                        )
+                # Per-IP phone-side fetch age — WHICH phone last pulled
+                # (multi-handset). Bounded to the 10 most recent fetchers.
+                if state.phone_fetch_ips:
+                    lines.append(
+                        "# HELP yfps_phonebook_fetch_age_seconds_by_ip "
+                        "Seconds since the phone at this client IP last downloaded a phonebook"
+                    )
+                    lines.append("# TYPE yfps_phonebook_fetch_age_seconds_by_ip gauge")
+                    for ip, ts in state.phone_fetch_ips.items():
+                        lines.append(
+                            'yfps_phonebook_fetch_age_seconds_by_ip{ip="%s"} %d'
+                            % (self._prom_escape_label(ip), int(time.time() - ts))
+                        )
             self._serve("\n".join(lines) + "\n", content_type="text/plain; version=0.0.4")
             return
 
@@ -1101,6 +1170,11 @@ def sync_loop(
 
     After a failed sync the retry delay grows (60s, 120s, 240s, ...) capped
     at the refresh interval; a successful sync resets the backoff.
+
+    Auto-detected phonebook IDs (empty phonebook_ids argument) are
+    RE-DETECTED on every sync cycle: a phonebook created on the Fritzbox
+    at runtime appears on the phone without a restart. Explicitly
+    configured IDs (FB_PHONEBOOK_ID set) are used verbatim forever.
     """
     pb_ids = list(phonebook_ids)
     consecutive_failures = 0
@@ -1129,6 +1203,10 @@ def sync_loop(
             consecutive_failures += 1
             time.sleep(delay)
             continue
+        if not phonebook_ids:
+            # Auto mode: forget the detected list so the next cycle
+            # re-detects — new Fritzbox phonebooks show up in operation.
+            pb_ids = []
         time.sleep(refresh_interval)
 
 
@@ -1202,6 +1280,12 @@ def main() -> None:
         description="Fritzbox → Yealink phonebook sync server",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    p.add_argument(
+        "--version",
+        action="version",
+        version="yealink-fritzbox-phonebook-sync v%s" % APP_VERSION,
+        help="Print the version and exit (single source: APP_VERSION).",
+    )
     p.add_argument("--fritzbox-host", default=os.getenv("FB_HOST", "fritz.box"))
     p.add_argument("--fritzbox-port", type=int, default=int(os.getenv("FB_PORT", "49000")))
     p.add_argument("--fritzbox-user", default=os.getenv("FB_USER", ""))
@@ -1265,7 +1349,7 @@ def main() -> None:
     p.add_argument(
         "--dedup-contacts",
         action="store_true",
-        default=os.getenv("SYNC_DEDUP_CONTACTS", "").lower() in ("1", "true", "yes", "on"),
+        default=_parse_bool(os.getenv("SYNC_DEDUP_CONTACTS", "")),
         help="Merge contacts with the same name within one phonebook into a single "
         "entry and collapse duplicate numbers (default: off — contacts pass through "
         "as the Fritzbox delivers them). Sorting is always on.",

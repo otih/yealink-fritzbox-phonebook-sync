@@ -60,7 +60,7 @@ curl -sO $BASE/.env.example && mv .env.example .env
 # Edit .env — set FB_USER, FB_PASSWORD, SYNC_SERVER_URL, SYNC_AUTH_USER, SYNC_AUTH_PASSWORD
 nano .env
 
-docker compose up -d          # pulls ghcr.io/otih/yealink-fritzbox-phonebook-sync:0.9.0
+docker compose up -d          # pulls ghcr.io/otih/yealink-fritzbox-phonebook-sync:0.10.0
 docker compose logs -f
 docker compose down           # stop (graceful, ~1-2s)
 ```
@@ -75,7 +75,15 @@ nano .env
 docker compose up -d
 ```
 
-The `docker-compose.yml` pins a concrete version by default (`0.9.0`) for reproducible deployments — switch to `latest` if you prefer automatic updates, or `build: .` to build from source.
+The `docker-compose.yml` pins a concrete version by default (`0.10.0`) for reproducible deployments — switch to `latest` if you prefer automatic updates, or `build: .` to build from source.
+
+**Testing unreleased changes:** the CI publishes a `:dev` image from the [`dev` integration branch](https://github.com/otih/yealink-fritzbox-phonebook-sync/tree/dev) on every push (same CVE gates as releases). To run a test host on the bleeding edge, point a copy of the compose file at it:
+
+```yaml
+    image: ghcr.io/otih/yealink-fritzbox-phonebook-sync:dev
+```
+
+`:dev` is for trying things out — pin the release version for anything you rely on.
 
 ### Option B: Kubernetes
 
@@ -180,7 +188,7 @@ The `FB_PHONEBOOK_ID` setting (or `--phonebook-id` flag) controls which phoneboo
 |---------|----------------------|
 | Single ID (e.g. `1`) | Only that phonebook appears — direct access, no selection menu |
 | Multiple IDs (e.g. `0,1`) | Each phonebook appears as a separate selectable entry |
-| Empty (unset) | All phonebooks are auto-detected and listed individually |
+| Empty (unset) | All phonebooks are auto-detected and listed individually — re-detected on every sync cycle, so a phonebook created on the Fritzbox appears without a restart |
 
 Each phonebook shows its name and contact count in the menu (e.g. "Work (193)"). Empty phonebooks — those containing only internal Fritzbox numbers like `**9` or `**600` — are automatically hidden from the menu.
 
@@ -246,7 +254,7 @@ Failed Basic-Auth attempts are rate-limited per client IP: after 5 failures with
 
 ### Fail-fast configuration validation
 
-Invalid values (port ranges, non-numeric phonebook IDs, non-positive refresh intervals, unknown log levels, malformed allowlists) are rejected at startup with a clear error message instead of failing at runtime.
+Invalid values (port ranges, non-numeric phonebook IDs, non-positive refresh intervals, unknown log levels, malformed allowlists, unrecognized `SYNC_DEDUP_CONTACTS` values) are rejected at startup with a clear error message instead of failing at runtime. `--version` prints the app version and exits.
 
 ## HTTP endpoints
 

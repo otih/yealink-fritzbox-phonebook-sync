@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-26
+
+### Added
+
+- **Per-IP phone fetch metric:** `yfps_phonebook_fetch_age_seconds_by_ip
+  {ip=\"…\"}` on `/metrics` — which handset last pulled its phonebook
+  (multi-handset setups), instead of only the aggregate over all phones.
+  Bounded to the 10 most recently seen client IPs (cardinality safety).
+
+- **Per-phonebook contact metric:** `yfps_phonebook_contacts{id="…",
+  name="…"}` on `/metrics` — one gauge line per served phonebook. A
+  shrinking source (e.g. a broken Google import into the Fritzbox) is
+  now visible per phonebook instead of only in the global sum.
+  Alert rule `PhonebookContactsDropped` documented (fires when a
+  phonebook drops below 10 contacts while the server is healthy).
+
+- **Runtime phonebook discovery (auto mode):** with `FB_PHONEBOOK_ID`
+  unset, the sync loop re-detects the phonebook ID list on every cycle —
+  a phonebook created on the Fritzbox (new Google account, CardDAV source)
+  appears on the phone without a container restart. Explicitly configured
+  IDs keep being used verbatim, as before.
+
+### Fixed
+
+- **`SYNC_DEDUP_CONTACTS` fail-fast validation:** a typo (e.g. `treu` or
+  `ja`) previously meant a silent `off`. Unrecognized values now abort
+  startup with a clear error — the same fail-fast contract as every
+  other setting. Accepted: `1`/`true`/`yes`/`on` = enabled,
+  `0`/`false`/`no`/`off`/empty = off.
+
+### Added
+
+- **`--version` flag:** prints the app version and exits — quick answer
+  for support cases, same single source (`APP_VERSION`) as the startup
+  banner and `yfps_build_info`.
+
 ## [0.9.0] - 2026-10-26
 
 ### Changed

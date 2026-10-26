@@ -269,3 +269,75 @@ class TestRouting:
             ln for ln in body.splitlines() if ln.startswith("yfps_phonebook_fetch_age_seconds")
         ][0]
         assert int(age_line.split()[-1]) == 0  # just fetched
+
+
+class TestPerPhonebookMetrics:
+    """yfps_phonebook_contacts{id=..., name=...}: contact count per
+    phonebook — a shrinking source (e.g. broken Google import into the
+    Fritzbox) becomes visible per phonebook, not just in the global sum."""
+
+    def test_per_phonebook_gauge_emitted(self, server):
+        base, st = server
+        with st.lock:
+            st.pb_meta = [
+                {"id": 1, "name": "Work", "count": 193},
+                {"id": 2, "name": "Privat", "count": 42},
+            ]
+        status, body = _get(base + "/metrics")
+        assert status == 200
+        assert "# TYPE yfps_phonebook_contacts gauge" in body
+        assert 'yfps_phonebook_contacts{id="1",name="Work"} 193' in body
+        assert 'yfps_phonebook_contacts{id="2",name="Privat"} 42' in body
+
+    def test_empty_state_emits_no_gauge_lines(self, server):
+        base, st = server
+        with st.lock:
+            st.pb_meta = []
+        status, body = _get(base + "/metrics")
+        assert status == 200
+        assert "yfps_phonebook_contacts{" not in body
+
+    def test_phonebook_name_escaped_in_label(self, server):
+        base, st = server
+        with st.lock:
+            st.pb_meta = [{"id": 3, "name": 'Book "quoted" \\ slash', "count": 1}]
+        status, body = _get(base + "/metrics")
+        assert status == 200
+        # Backslash and quote must be escaped per Prometheus label rules
+        assert 'yfps_phonebook_contacts{id="3",name="Book \\"quoted\\" \\\\ slash"} 1' in body
+
+
+class TestPerIpFetchMetrics:
+    """yfps_phonebook_fetch_age_seconds_by_ip{ip=...}: one line per
+    fetching client IP — WHICH phone last pulled its phonebook (multi-
+    handset setups), not just that some phone did. Bounded: only the 10
+    most recently seen IPs are kept (cardinality safety)."""
+
+    def test_fetch_records_client_ip(self, server):
+        base, _ = server
+        with yfps.state.lock:
+            yfps.state.phone_fetch_ips = {}
+            yfps.state.last_phone_fetch = 0
+        _get(base + "/menu.xml")
+        status, body = _get(base + "/metrics")
+        assert status == 200
+        assert 'yfps_phonebook_fetch_age_seconds_by_ip{ip="127.0.0.1"}' in body
+
+    def test_labeled_ip_matches_client(self, server):
+        base, _ = server
+        with yfps.state.lock:
+            yfps.state.phone_fetch_ips = {}
+            yfps.state.last_phone_fetch = 0
+        _get(base + "/menu.xml")
+        status, body = _get(base + "/metrics")
+        assert 'yfps_phonebook_fetch_age_seconds_by_ip{ip="127.0.0.1"} 0' in body
+
+    def test_per_ip_map_bounded_to_10(self, server):
+        base, _ = server
+        # 15 different fake IPs recorded; one more fetch triggers the
+        # bound — the map must stay <= 10 entries
+        with yfps.state.lock:
+            yfps.state.phone_fetch_ips = {"10.0.0.%d" % i: 1700000000.0 + i for i in range(15)}
+        _get(base + "/menu.xml")  # records 127.0.0.1 -> bound applies
+        with yfps.state.lock:
+            assert len(yfps.state.phone_fetch_ips) <= 10
