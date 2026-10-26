@@ -680,6 +680,10 @@ class State:
         # Configured sync interval (seconds) — basis for the degraded
         # evaluation on /metrics. 0 = unknown (treated as never degraded).
         self.refresh_interval = 0
+        # Security counters: failed Basic-Auth attempts and requests
+        # blocked by the per-IP rate limiter (brute-force visibility).
+        self.auth_failures = 0
+        self.auth_rate_limited = 0
         self.lock = threading.Lock()
 
 
@@ -754,6 +758,8 @@ class PhonebookHandler(BaseHTTPRequestHandler):
             return True
         if not rate_limiter.is_allowed(client_ip):
             logger.warning("Rate limit exceeded for %s", client_ip)
+            with state.lock:
+                state.auth_rate_limited += 1
             self.send_response(429)
             self.send_header("Connection", "close")
             self.end_headers()
@@ -762,6 +768,8 @@ class PhonebookHandler(BaseHTTPRequestHandler):
             rate_limiter.record_success(client_ip)
             return True
         rate_limiter.record_failure(client_ip)
+        with state.lock:
+            state.auth_failures += 1
         self.send_response(401)
         self.send_header("WWW-Authenticate", 'Basic realm="Phonebook"')
         self.send_header("Connection", "close")
@@ -821,6 +829,12 @@ class PhonebookHandler(BaseHTTPRequestHandler):
                     "# HELP yfps_degraded 1 if the last successful Fritzbox sync is older than 3x the refresh interval (or never synced), 0 otherwise",
                     "# TYPE yfps_degraded gauge",
                     "yfps_degraded %d" % degraded,
+                    "# HELP yfps_auth_failures_total Number of rejected HTTP Basic-Auth attempts since process start",
+                    "# TYPE yfps_auth_failures_total counter",
+                    "yfps_auth_failures_total %d" % state.auth_failures,
+                    "# HELP yfps_auth_rate_limited_total Number of requests blocked by the per-IP auth rate limiter (HTTP 429) since process start",
+                    "# TYPE yfps_auth_rate_limited_total counter",
+                    "yfps_auth_rate_limited_total %d" % state.auth_rate_limited,
                     "# HELP yfps_sync_success_total Number of successful sync cycles",
                     "# TYPE yfps_sync_success_total counter",
                     "yfps_sync_success_total %d" % state.sync_successes,

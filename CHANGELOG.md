@@ -24,6 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sync is behind, and a restart would not help (it would even drop the
   last-known-good cache). Alert rule `PhonebookSyncDegraded` documented.
 
+- **Brute-force visibility:** two new counters on `/metrics` —
+  `yfps_auth_failures_total` (rejected Basic-Auth attempts) and
+  `yfps_auth_rate_limited_total` (requests blocked with HTTP 429 by the
+  per-IP rate limiter). The limiter itself is unchanged; it finally
+  becomes observable. Alert rule `PhonebookAuthBruteForce` documented.
+
 ## [0.7.0] - 2026-10-25
 
 ### Added

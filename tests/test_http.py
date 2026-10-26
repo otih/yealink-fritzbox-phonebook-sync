@@ -132,6 +132,35 @@ class TestAuthEnforcement:
             status = e.code
         assert status == 401
 
+    def test_auth_failures_counted_in_metrics(self, server):
+        """A rejected Basic-Auth attempt must show up in yfps_auth_failures_total."""
+        base, _ = server
+        with yfps.state.lock:
+            yfps.state.auth_failures = 0
+        status, _ = _get(base + "/menu.xml", auth=("user1", "wrong"))
+        assert status == 401
+        status, body = _get(base + "/metrics")
+        assert status == 200
+        assert "yfps_auth_failures_total 1" in body
+        assert "# TYPE yfps_auth_failures_total counter" in body
+
+    def test_rate_limit_rejections_counted_in_metrics(self, server):
+        """Requests blocked with 429 must show up in yfps_auth_rate_limited_total."""
+        base, _ = server
+        with yfps.state.lock:
+            yfps.state.auth_failures = 0
+            yfps.state.auth_rate_limited = 0
+        # Fresh limiter: module-global state may carry failures from
+        # earlier tests in this class.
+        yfps.rate_limiter = yfps._RateLimiter()
+        # Exhaust the per-IP limit (5 failures within 60s) → then 429
+        statuses = [_get(base + "/menu.xml", auth=("user1", "wrong"))[0] for _ in range(7)]
+        assert statuses == [401, 401, 401, 401, 401, 429, 429]
+        status, body = _get(base + "/metrics")
+        assert status == 200
+        assert "yfps_auth_rate_limited_total 2" in body
+        assert "# TYPE yfps_auth_rate_limited_total counter" in body
+
 
 class TestDegradedMetric:
     """yfps_degraded: 1 when the last successful sync is older than 3x the
