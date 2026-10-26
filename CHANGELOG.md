@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **TLS hardened to SSL-Labs A+ style (audit 2026-10-26):** explicit
+  TLS 1.2 minimum (previously only by library default), cipher suites
+  restricted to ECDHE + AEAD (AES-GCM / CHACHA20-POLY1305) — removes
+  static-RSA and CBC suites and with them the forward-secrecy gap; HSTS
+  header (`max-age=31536000; includeSubDomains`) on TLS responses.
+  Plain-HTTP mode (default) is untouched.
+
 ### Added
 
 - **Optional TLS (`SYNC_TLS_CERT` / `SYNC_TLS_KEY`):** set both to serve

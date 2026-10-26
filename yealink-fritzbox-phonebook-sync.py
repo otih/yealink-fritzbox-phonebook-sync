@@ -900,6 +900,11 @@ auth_user = ""
 auth_pass = ""
 # Set in main(): rate limiter for auth failures, optional IP allowlist
 rate_limiter = _RateLimiter()
+# True when the server socket is TLS-wrapped (set in main()) — drives the
+# Strict-Transport-Security header (HSTS): advertised on TLS responses
+# only, never on plain HTTP (advertising transport security over an
+# unverified channel would be a lie).
+tls_enabled = False
 ip_allowlist = _IpAllowlist("")
 
 # Threading server: one hung client must never block the health check
@@ -946,8 +951,16 @@ def _make_server(
     """
     srv = _SERVER_CLASS((host, port), PhonebookHandler)
 
+    global tls_enabled
+    tls_enabled = bool(tls_cert and tls_key)
     if tls_cert and tls_key:
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        # SSL-Labs-style hardening (audited 2026-10-26): TLS 1.2 minimum
+        # EXPLICIT (never trust library defaults across base images),
+        # ECDHE + AEAD only (GCM/CHACHA20 — forward secrecy, no CBC,
+        # no static-RSA key exchange).
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+        ctx.set_ciphers("ECDHE+AESGCM:ECDHE+CHACHA20")
         ctx.load_cert_chain(tls_cert, tls_key)
         orig_get_request = srv.get_request
 
@@ -1201,6 +1214,11 @@ class PhonebookHandler(BaseHTTPRequestHandler):
         self.send_response_only(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        if tls_enabled:
+            # HSTS (SSL Labs A+ requirement): browsers must not talk to
+            # this endpoint over plain HTTP for a year. Phones ignore
+            # the header; browsers get the protection.
+            self.send_header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(body)

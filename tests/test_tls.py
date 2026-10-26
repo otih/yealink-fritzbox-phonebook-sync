@@ -130,3 +130,83 @@ class TestTlsConfigValidation:
     def test_both_unset_returns_none(self, monkeypatch):
         monkeypatch.setattr(os, "getenv", lambda name, default=None: default)
         assert yfps._load_tls_config() is None
+
+
+class TestTlsHardening:
+    """SSL-Labs-style hardening: TLS 1.2 minimum, ECDHE+AEAD-only
+    (GCM/CHACHA20, no CBC, no static-RSA suites), HSTS header on TLS."""
+
+    def _tls_server(self, tls_pair):
+        cert, key = tls_pair
+        srv = yfps._make_server("127.0.0.1", 0, tls_cert=cert, tls_key=key)
+        thread = threading.Thread(target=srv.serve_forever, daemon=True)
+        thread.start()
+        return srv
+
+    def test_minimum_version_is_tls12(self, tls_pair):
+        import socket as _socket
+
+        srv = self._tls_server(tls_pair)
+        port = srv.server_address[1]
+        try:
+            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            ctx.minimum_version = ssl.TLSVersion.TLSv1
+            ctx.maximum_version = ssl.TLSVersion.TLSv1_1
+            with pytest.raises(ssl.SSLError):
+                with _socket.create_connection(("127.0.0.1", port), timeout=3) as raw:
+                    with ctx.wrap_socket(raw):
+                        pass
+        finally:
+            srv.shutdown()
+
+    def test_only_ecdhe_aead_suites(self, tls_pair):
+        import socket as _socket
+
+        srv = self._tls_server(tls_pair)
+        port = srv.server_address[1]
+        try:
+            for suite in ("AES128-GCM-SHA256", "AES256-SHA", "ECDHE-RSA-AES128-SHA"):
+                ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+                ctx.maximum_version = ssl.TLSVersion.TLSv1_2
+                ctx.set_ciphers(suite)
+                with pytest.raises(ssl.SSLError):
+                    with _socket.create_connection(("127.0.0.1", port), timeout=3) as raw:
+                        with ctx.wrap_socket(raw):
+                            pass
+        finally:
+            srv.shutdown()
+
+    def test_hsts_header_on_tls_responses(self, tls_pair):
+        import urllib.request
+
+        srv = self._tls_server(tls_pair)
+        port = srv.server_address[1]
+        try:
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            with urllib.request.urlopen(
+                "https://127.0.0.1:%d/health" % port, context=ctx, timeout=5
+            ) as resp:
+                assert resp.headers.get("Strict-Transport-Security") == (
+                    "max-age=31536000; includeSubDomains"
+                )
+        finally:
+            srv.shutdown()
+
+    def test_no_hsts_on_plain_http(self):
+        import urllib.request
+
+        srv = yfps._make_server("127.0.0.1", 0)
+        port = srv.server_address[1]
+        thread = threading.Thread(target=srv.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with urllib.request.urlopen("http://127.0.0.1:%d/health" % port, timeout=5) as resp:
+                assert resp.headers.get("Strict-Transport-Security") is None
+        finally:
+            srv.shutdown()
