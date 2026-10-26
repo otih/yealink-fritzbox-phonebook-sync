@@ -59,6 +59,12 @@ at the `SYNC_CACHE_DIR` path, e.g.:
       - ./phonebook-cache:/data
 ```
 
+**Bind-mount permission note:** the container runs as the non-root `app`
+user (UID 1000). A bind-mounted host directory must be readable (and
+writable — snapshots are saved after each sync) by UID 1000:
+`chown -R 1000:1000 ./phonebook-cache`. Named volumes handle this
+automatically.
+
 ## Contact dedup (optional)
 
 Set `SYNC_DEDUP_CONTACTS` (or pass `--dedup-contacts`) to merge contacts
