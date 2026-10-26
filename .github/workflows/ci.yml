@@ -52,6 +52,16 @@ jobs:
       - name: Type-check
         run: mypy yealink-fritzbox-phonebook-sync.py
 
+      - name: Image-pin gate (no :latest in shipped manifests)
+        # docker-compose.yml and k8s.yaml must pin a concrete release
+        # version — :latest in a manifest means "whatever CI published
+        # last", which is exactly what reproducible deploys avoid.
+        run: |
+          if grep -n 'yealink-fritzbox-phonebook-sync:latest' docker-compose.yml k8s.yaml; then
+            echo "::error::Pinned manifests must not reference :latest — pin the release version."
+            exit 1
+          fi
+
   test:
     name: Unit tests
     runs-on: ubuntu-latest
@@ -71,7 +81,10 @@ jobs:
         run: pip install pytest pytest-cov
 
       - name: Run tests with coverage
-        run: pytest tests/ -v --cov=yealink_fritzbox_phonebook_sync --cov-report=term --cov-fail-under=45
+        # Gate ratchets upward as coverage grows: 45% was the honest
+        # starting point (2026), the suite reached 62% with the negative
+        # tests (v0.10.1) — gate raised to 60% so it can only go up.
+        run: pytest tests/ -v --cov=yealink_fritzbox_phonebook_sync --cov-report=term --cov-fail-under=60
 
   docker:
     name: Docker build & push
@@ -256,7 +269,70 @@ jobs:
           fi
           echo "Auth enforced: unauthenticated 401, authenticated 200"
 
+      - name: --check must fail cleanly against a dead Fritzbox
+        # Diagnostic mode exit codes, exercised in the real container:
+        # against the TEST-NET host it must print FAIL + hints and exit 1
+        # — and never hang (the SOAP timeout applies).
+        run: |
+          set +e
+          timeout 60 docker run --rm \
+            -e FB_HOST=192.0.2.1 -e FB_USER=dummy -e FB_PASSWORD=dummy \
+            --entrypoint python3 yfps-e2e:local \
+            /app/yealink-fritzbox-phonebook-sync.py --check
+          code=$?
+          set -e
+          if [ "$code" != "1" ]; then
+            echo "::error::--check against a dead Fritzbox must exit 1 (got $code)"
+            exit 1
+          fi
+          echo "--check fails cleanly with exit 1"
+
+      - name: SYNC_CACHE_DIR restores a snapshot across restarts
+        # Write a snapshot via the cache mechanism (hand-crafted, same
+        # format _save_cache produces), restart the container with the
+        # Fritzbox dead — the menu must come from the cache, not the
+        # placeholder. Then verify a fresh container WITHOUT the cache
+        # env still serves the placeholder (opt-in semantics).
+        run: |
+          mkdir -p /tmp/yfps-cache
+          cat > /tmp/yfps-cache/phonebook-cache.json <<'JSON'
+          {"menu_xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<YealinkIPPhoneMenu>\n  <MenuItem>\n    <Name>E2E Cache (7)</Name>\n    <URL>http://127.0.0.1:8080/contacts/1.xml</URL>\n  </MenuItem>\n</YealinkIPPhoneMenu>\n",
+           "contacts": {"1": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<YealinkIPPhoneDirectory>\n  <DirectoryEntry>\n    <Name>Cached Entry</Name>\n    <Telephone>+4917012345678</Telephone>\n  </DirectoryEntry>\n</YealinkIPPhoneDirectory>\n"},
+           "pb_meta": [{"id": 1, "name": "E2E Cache", "count": 7}],
+           "last_sync": 1760000000.0, "total_contacts": 7}
+          JSON
+          # The container runs as the non-root 'app' user (UID 1000) —
+          # the bind-mounted cache must be readable AND writable by it.
+          # GitHub runners cannot chown to foreign UIDs, so world-access
+          # the test dir instead; production users should prefer a named
+          # volume or chown the host dir (see configuration docs).
+          chmod 777 /tmp/yfps-cache
+          chmod 666 /tmp/yfps-cache/phonebook-cache.json
+
+          docker run -d --rm \
+            -e FB_HOST=192.0.2.1 \
+            -e FB_USER=dummy -e FB_PASSWORD=dummy \
+            -e SYNC_SERVER_URL=http://127.0.0.1:8080 \
+            -e SYNC_AUTH_USER=e2euser -e SYNC_AUTH_PASSWORD=e2epass \
+            -e SYNC_CACHE_DIR=/data \
+            -v /tmp/yfps-cache:/data \
+            -p 18081:8080 \
+            --name yfps-e2e-cached \
+            yfps-e2e:local
+
+          for i in $(seq 1 30); do
+            if curl -sf -u e2euser:e2epass http://127.0.0.1:18081/menu.xml | grep -q 'E2E Cache (7)'; then
+              echo "Cache restore OK after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::menu.xml did not serve the cached snapshot within 30s"
+          docker logs yfps-e2e-cached
+          exit 1
+
       - name: SIGTERM must stop the container quickly
         run: |
           timeout 10 docker stop yfps-e2e
+          timeout 10 docker stop yfps-e2e-cached || true
           echo "Graceful stop OK"
