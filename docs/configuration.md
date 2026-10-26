@@ -119,13 +119,39 @@ fails to fetch the phonebook. Two supported ways:
 A self-signed certificate WITHOUT a trusted CA will make the phone
 reject the connection — test with a browser or `curl -v` first.
 
-**TLS configuration (audited 2026-10-26, SSL-Labs A+ style):** the
-server enforces TLS 1.2+ (explicit minimum — no reliance on library
-defaults), accepts ONLY forward-secrecy AEAD suites
-(ECDHE + AES-GCM / CHACHA20-POLY1305 — no CBC, no static-RSA key
-exchange, no 3DES/RC4), and sends
-`Strict-Transport-Security: max-age=31536000; includeSubDomains` on TLS
-responses (HSTS protects browsers; the phone ignores the header).
+**TLS configuration (audited 2026-10-26 with testssl.sh 3.3dev,
+SSL-Labs rating guide):** the server enforces TLS 1.2+ (explicit
+minimum — no reliance on library defaults), accepts ONLY
+forward-secrecy AEAD suites (ECDHE + AES-GCM / CHACHA20-POLY1305 —
+no CBC, no static-RSA key exchange, no 3DES/RC4), enforces its own
+cipher order, and sends
+`Strict-Transport-Security: max-age=31536000; includeSubDomains` on
+TLS responses (HSTS protects browsers; the phone ignores the header).
+
+Audit result (testssl.sh, all categories): SSLv2/v3 and TLS 1.0/1.1
+not offered; NULL/LOW/3DES/CBC/static-RSA ciphers not offered;
+forward secrecy offered; server cipher order enforced; HSTS 365 days;
+none of the tested vulnerabilities present (Heartbleed, CCS,
+Ticketbleed, ROBOT, CRIME, POODLE, SWEET32, FREAK, DROWN, LOGJAM,
+BEAST, LUCKY13, Winshock, RC4). Client simulations succeed for every
+platform from ~2015 onward (Android 7+, Chrome, Firefox, Edge, Safari,
+Java 8+, OpenSSL 1.0.2+).
+
+**Deliberately accepted limitations (documented):**
+
+- **No OCSP stapling** — Python's ssl module does not implement it.
+  Irrelevant for LAN deployments with long-lived certificates; a
+  publicly exposed host behind a reverse proxy should staple at the
+  proxy instead.
+- **Legacy clients fail by design** — devices that only speak
+  CBC/non-PFS suites (pre-2015 era: IE 8-10 on default settings, Java 7)
+  cannot connect. Every Yealink phone with TLS 1.2+ support works; if
+  an OLD firmware requires CBC suites, TLS mode will not connect and
+  plain HTTP (the default) remains the fallback for that phone.
+- **The audit certificate was self-signed** — testssl grades the
+  *chain of trust*, which is the operator's certificate choice, not
+  the server configuration; the rating cap (T) comes solely from the
+  test certificate.
 
 ## Logging
 
