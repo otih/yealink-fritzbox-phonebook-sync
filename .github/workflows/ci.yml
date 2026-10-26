@@ -302,6 +302,9 @@ jobs:
            "last_sync": 1760000000.0, "total_contacts": 7}
           JSON
           chmod 600 /tmp/yfps-cache/phonebook-cache.json
+          # The container runs as the non-root 'app' user (UID 1000 in
+          # the image) — the bind-mounted cache must be readable by it.
+          chown -R 1000:1000 /tmp/yfps-cache
 
           docker run -d --rm \
             -e FB_HOST=192.0.2.1 \
