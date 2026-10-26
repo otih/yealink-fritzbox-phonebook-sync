@@ -334,6 +334,10 @@ class TestPerIpFetchMetrics:
 
     def test_per_ip_map_bounded_to_10(self, server):
         base, _ = server
+        # Fresh limiter: earlier suite tests exhaust the per-IP budget
+        # (module-global state) — the fetch here must actually happen.
+        yfps.rate_limiter = yfps._RateLimiter()
+        yfps.auth_user = ""
         # 15 different fake IPs recorded; one more fetch triggers the
         # bound — the map must stay <= 10 entries
         with yfps.state.lock:
