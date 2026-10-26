@@ -689,6 +689,92 @@ class State:
 
 state = State()
 
+# Optional on-disk cache directory (SYNC_CACHE_DIR). Empty = disabled.
+# Set in main(); kept module-global like auth_user so the sync path can
+# persist snapshots without threading the path through every signature.
+cache_dir = ""
+
+
+def _cache_path(directory: str) -> str:
+    """Return the snapshot file path inside the cache directory."""
+    return os.path.join(directory, "phonebook-cache.json")
+
+
+def _save_cache(directory: str) -> None:
+    """Persist the current phonebook state as a JSON snapshot.
+
+    Called after each successful sync when SYNC_CACHE_DIR is set. Writes
+    are atomic (temp file + os.replace) so a crash mid-write can never
+    leave a truncated snapshot behind; the file is created with 0600 —
+    it contains the full contact data.
+    """
+    if not directory:
+        return
+    os.makedirs(directory, exist_ok=True)
+    with state.lock:
+        payload = {
+            "menu_xml": state.menu_xml,
+            "contacts": {str(pid): xml for pid, xml in state.contacts.items()},
+            "pb_meta": state.pb_meta,
+            "last_sync": state.last_sync,
+            "total_contacts": state.total_contacts,
+        }
+    path = _cache_path(directory)
+    tmp = path + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh)
+        os.replace(tmp, path)
+    except OSError:
+        # Never let a cache write break the sync loop
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        logger.warning("Could not write phonebook cache to %s", path)
+
+
+def _load_cache(directory: str) -> bool:
+    """Restore the phonebook state from a previous snapshot.
+
+    Returns True when a valid snapshot was loaded, False otherwise (no
+    file, unreadable, corrupt). A corrupt cache is logged and ignored —
+    it must never prevent the server from starting; the background sync
+    will overwrite it with a fresh snapshot as soon as the Fritzbox is
+    reachable.
+    """
+    if not directory:
+        return False
+    path = _cache_path(directory)
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except FileNotFoundError:
+        return False
+    except (OSError, ValueError) as exc:
+        logger.warning("Ignoring unreadable phonebook cache %s (%s)", path, exc)
+        return False
+    try:
+        with state.lock:
+            state.menu_xml = str(data["menu_xml"])
+            state.contacts = {int(pid): xml for pid, xml in data["contacts"].items()}
+            state.pb_meta = list(data["pb_meta"])
+            state.last_sync = float(data["last_sync"])
+            state.total_contacts = int(data["total_contacts"])
+    except (KeyError, TypeError, ValueError) as exc:
+        logger.warning("Ignoring invalid phonebook cache %s (%s)", path, exc)
+        return False
+    logger.info(
+        "Loaded cached phonebook from %s (%d phonebooks, %d contacts, sync age %.0fs)",
+        path,
+        len(state.pb_meta),
+        state.total_contacts,
+        time.time() - state.last_sync,
+    )
+    return True
+
+
 # HTTP Basic Auth credentials (set in main from env vars)
 auth_user = ""
 auth_pass = ""
@@ -941,6 +1027,10 @@ def sync_once(
     listing all non-empty phonebooks. Empty phonebooks (0 contacts after
     filtering internal numbers) are excluded from the menu.
 
+    On failure the in-memory state is left untouched — the server keeps
+    serving the last-known-good phonebook (or a snapshot restored from
+    the on-disk cache at startup).
+
     Args:
         server_base: used for internal URL construction (no credentials)
         external_url: used for Menu.xml <URL> tags (may include embedded
@@ -971,6 +1061,8 @@ def sync_once(
         state.last_sync = time.time()
         state.total_contacts = total
         state.sync_successes += 1
+    # Persist the fresh snapshot (no-op when SYNC_CACHE_DIR is unset)
+    _save_cache(cache_dir)
     logger.info("Sync complete: %d phonebooks, %d total contacts", len(pb_meta), total)
 
 
@@ -1073,6 +1165,12 @@ def main() -> None:
         help="Comma-separated IPs or CIDR ranges allowed to access the phonebook "
         "(empty = allow all, default)",
     )
+    p.add_argument(
+        "--cache-dir",
+        default=os.getenv("SYNC_CACHE_DIR", ""),
+        help="Directory for the persistent phonebook cache (empty = disabled, default). "
+        "Bridges restarts while the Fritzbox is unreachable.",
+    )
     args = p.parse_args()
 
     try:
@@ -1174,6 +1272,21 @@ def main() -> None:
         state.menu_xml = _placeholder_menu(external_url)
         # Remember the interval for the /metrics degraded evaluation
         state.refresh_interval = args.refresh_interval
+
+    # Persistent cache: restore the last snapshot (if configured) so a
+    # restart while the Fritzbox is unreachable still serves real data.
+    # Fail fast when the cache directory cannot be created — a silently
+    # missing cache would promise restart resilience it does not deliver.
+    global cache_dir
+    cache_dir = args.cache_dir
+    if cache_dir:
+        try:
+            os.makedirs(cache_dir, exist_ok=True)
+        except OSError as exc:
+            logger.error("Cannot create cache directory %s: %s", cache_dir, exc)
+            sys.exit(1)
+        if _load_cache(cache_dir):
+            logger.info("Serving cached phonebook until the next successful sync")
 
     # Initial sync (non-blocking — server starts even if this fails)
     try:

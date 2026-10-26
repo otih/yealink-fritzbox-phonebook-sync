@@ -34,6 +34,31 @@ On the Yealink phone, embed the credentials in the Remote URL:
 auth fields for remote phonebooks, and the server embeds them
 automatically into the Menu.xml URLs it serves.
 
+## Persistence
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SYNC_CACHE_DIR` | *(empty)* | Directory for the persistent phonebook cache. **Empty (default) = disabled** — the pre-existing in-memory-only behavior. |
+
+When set, the server persists the phonebook state after every
+successful Fritzbox sync as a JSON snapshot (`phonebook-cache.json`,
+created with `0600` permissions, written atomically) and restores it on
+startup. This bridges container restarts while the Fritzbox is
+unreachable: instead of the "Noch nicht synchronisiert" placeholder the
+phone gets the last known good phonebook, and the next successful sync
+overwrites the snapshot. A corrupt or unreadable snapshot is logged and
+ignored — it never blocks startup.
+
+For Docker deployments with `read_only: true`, mount a writable volume
+at the `SYNC_CACHE_DIR` path, e.g.:
+
+```yaml
+    environment:
+      SYNC_CACHE_DIR: /data
+    volumes:
+      - ./phonebook-cache:/data
+```
+
 ## Logging
 
 | Variable | Default | Description |

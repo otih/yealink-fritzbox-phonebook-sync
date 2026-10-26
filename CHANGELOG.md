@@ -30,6 +30,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   per-IP rate limiter). The limiter itself is unchanged; it finally
   becomes observable. Alert rule `PhonebookAuthBruteForce` documented.
 
+- **Optional persistent phonebook cache (`SYNC_CACHE_DIR`):** when set,
+  the server writes its state after every successful Fritzbox sync to
+  `phonebook-cache.json` (atomic write, `0600`) and restores it on the
+  next startup. This bridges container restarts while the Fritzbox is
+  unreachable: the phone gets the last known good phonebook instead of
+  the "Noch nicht synchronisiert" placeholder. A corrupt snapshot is
+  logged and ignored (never blocks startup); an un-creatable cache
+  directory fails fast. Empty/unset keeps the previous in-memory-only
+  behavior — fully backwards compatible.
+
 ## [0.7.0] - 2026-10-25
 
 ### Added
