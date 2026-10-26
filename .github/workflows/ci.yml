@@ -143,11 +143,18 @@ jobs:
         # Software Bill of Materials as a downloadable workflow artifact
         # for quick human audits. The authoritative copy is attached to
         # the image itself as an OCI attestation in the push step below.
+        # upload-release-assets: false — anchore/sbom-action attaches the
+        # SBOM to the GitHub Release object whenever one exists during a
+        # tag run. With contents:read-only that fails with 'Resource not
+        # accessible by integration' BEFORE the image push (v0.9.0: the
+        # 0.9.0 image never reached the registry). The SBOM stays
+        # available as workflow artifact + OCI attestation on the image.
         uses: anchore/sbom-action@v0
         with:
           image: yfps/ci:scan-target
           format: cyclonedx-json
           artifact-name: sbom.cdx.json
+          upload-release-assets: false
 
       - name: Vulnerability scan (gate)
         # Fails the build on CRITICAL/HIGH CVEs before anything is published.
