@@ -714,6 +714,9 @@ class State:
         # (menu.xml or contacts/<id>.xml)? 0 = never.
         self.last_phone_fetch = 0
         self.phone_fetches = 0
+        # Per-IP phone-side activity: {ip: timestamp}. Bounded to the 10
+        # most recently seen IPs (cardinality safety on /metrics).
+        self.phone_fetch_ips: dict[str, float] = {}
         # Configured sync interval (seconds) — basis for the degraded
         # evaluation on /metrics. 0 = unknown (treated as never degraded).
         self.refresh_interval = 0
@@ -921,11 +924,19 @@ class PhonebookHandler(BaseHTTPRequestHandler):
 
         Called after successfully serving /menu.xml or /contacts/<id>.xml —
         answers "when did the phone last pull its phonebook?" (mirrors the
-        Fritzbox-side yfps_sync_* metrics).
+        Fritzbox-side yfps_sync_* metrics). Also records the fetching
+        client IP (bounded to the 10 most recently seen) so multi-handset
+        setups can see WHICH phone last pulled.
         """
         with state.lock:
             state.phone_fetches += 1
             state.last_phone_fetch = time.time()
+            ip = self.client_address[0]
+            state.phone_fetch_ips[ip] = time.time()
+            # Cardinality bound: keep only the 10 most recent fetchers
+            if len(state.phone_fetch_ips) > 10:
+                recent = sorted(state.phone_fetch_ips.items(), key=lambda kv: kv[1])[-10:]
+                state.phone_fetch_ips = dict(recent)
 
     def do_GET(self) -> None:
         # /health is always open (needed for Docker HEALTHCHECK, monitoring)
@@ -1017,6 +1028,19 @@ class PhonebookHandler(BaseHTTPRequestHandler):
                                 self._prom_escape_label(pb["name"]),
                                 pb["count"],
                             )
+                        )
+                # Per-IP phone-side fetch age — WHICH phone last pulled
+                # (multi-handset). Bounded to the 10 most recent fetchers.
+                if state.phone_fetch_ips:
+                    lines.append(
+                        "# HELP yfps_phonebook_fetch_age_seconds_by_ip "
+                        "Seconds since the phone at this client IP last downloaded a phonebook"
+                    )
+                    lines.append("# TYPE yfps_phonebook_fetch_age_seconds_by_ip gauge")
+                    for ip, ts in state.phone_fetch_ips.items():
+                        lines.append(
+                            'yfps_phonebook_fetch_age_seconds_by_ip{ip="%s"} %d'
+                            % (self._prom_escape_label(ip), int(time.time() - ts))
                         )
             self._serve("\n".join(lines) + "\n", content_type="text/plain; version=0.0.4")
             return

@@ -305,3 +305,39 @@ class TestPerPhonebookMetrics:
         assert status == 200
         # Backslash and quote must be escaped per Prometheus label rules
         assert 'yfps_phonebook_contacts{id="3",name="Book \\"quoted\\" \\\\ slash"} 1' in body
+
+
+class TestPerIpFetchMetrics:
+    """yfps_phonebook_fetch_age_seconds_by_ip{ip=...}: one line per
+    fetching client IP — WHICH phone last pulled its phonebook (multi-
+    handset setups), not just that some phone did. Bounded: only the 10
+    most recently seen IPs are kept (cardinality safety)."""
+
+    def test_fetch_records_client_ip(self, server):
+        base, _ = server
+        with yfps.state.lock:
+            yfps.state.phone_fetch_ips = {}
+            yfps.state.last_phone_fetch = 0
+        _get(base + "/menu.xml")
+        status, body = _get(base + "/metrics")
+        assert status == 200
+        assert 'yfps_phonebook_fetch_age_seconds_by_ip{ip="127.0.0.1"}' in body
+
+    def test_labeled_ip_matches_client(self, server):
+        base, _ = server
+        with yfps.state.lock:
+            yfps.state.phone_fetch_ips = {}
+            yfps.state.last_phone_fetch = 0
+        _get(base + "/menu.xml")
+        status, body = _get(base + "/metrics")
+        assert 'yfps_phonebook_fetch_age_seconds_by_ip{ip="127.0.0.1"} 0' in body
+
+    def test_per_ip_map_bounded_to_10(self, server):
+        base, _ = server
+        # 15 different fake IPs recorded; one more fetch triggers the
+        # bound — the map must stay <= 10 entries
+        with yfps.state.lock:
+            yfps.state.phone_fetch_ips = {"10.0.0.%d" % i: 1700000000.0 + i for i in range(15)}
+        _get(base + "/menu.xml")  # records 127.0.0.1 -> bound applies
+        with yfps.state.lock:
+            assert len(yfps.state.phone_fetch_ips) <= 10

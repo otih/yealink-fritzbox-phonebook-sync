@@ -23,6 +23,7 @@ otherwise) and whether the Fritzbox sync is healthy.
 | `yfps_phonebook_fetch_total` | counter | Number of phonebook downloads by phones (`/menu.xml` or `/contacts/<id>.xml`) since process start. |
 | `yfps_phonebook_fetch_last_timestamp_seconds` | gauge | Unix timestamp of the last phonebook download by a phone (`0` = never). |
 | `yfps_phonebook_fetch_age_seconds` | gauge | Seconds since a phone last downloaded a phonebook (`-1` = never). Mirrors `yfps_sync_age_seconds` on the phone side. |
+| `yfps_phonebook_fetch_age_seconds_by_ip{ip="…"}` | gauge | Seconds since the phone at this client IP last downloaded a phonebook — **which** handset last pulled (multi-handset setups). Bounded to the 10 most recently seen IPs. |
 | `yfps_contacts_total` | gauge | Total contacts across all served phonebooks (after filtering). |
 | `yfps_phonebook_contacts{id="…", name="…"}` | gauge | Contact count **per phonebook** (one line per served phonebook). A shrinking source — e.g. a broken Google import into the Fritzbox — is visible per phonebook instead of only in the global sum. |
 | `yfps_phonebooks_total` | gauge | Number of phonebooks currently served. |
@@ -38,7 +39,9 @@ The Yealink polls its remote phonebook periodically (configurable on the
 phone, typically hourly). A growing fetch age while the server is healthy
 means the phone stopped polling — offline, reboot loop, wrong remote URL,
 or it fetches from a different server instance than the one you monitor.
-Alert when it exceeds ~2× the phone's own poll interval.
+Alert when it exceeds ~2× the phone's own poll interval. With more than one
+handset, `yfps_phonebook_fetch_age_seconds_by_ip` tells you WHICH phone
+stopped polling — the unlabeled global is the aggregate over all handsets.
 
 ## Prometheus scrape config
 

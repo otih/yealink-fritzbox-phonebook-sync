@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Per-IP phone fetch metric:** `yfps_phonebook_fetch_age_seconds_by_ip
+  {ip=\"…\"}` on `/metrics` — which handset last pulled its phonebook
+  (multi-handset setups), instead of only the aggregate over all phones.
+  Bounded to the 10 most recently seen client IPs (cardinality safety).
+
 - **Per-phonebook contact metric:** `yfps_phonebook_contacts{id="…",
   name="…"}` on `/metrics` — one gauge line per served phonebook. A
   shrinking source (e.g. a broken Google import into the Fritzbox) is
