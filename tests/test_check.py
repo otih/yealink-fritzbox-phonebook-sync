@@ -8,8 +8,6 @@ It must never start the HTTP server. Uses a stub Fritzbox client.
 import importlib.util
 import os
 
-import pytest
-
 _SPEC = importlib.util.spec_from_file_location(
     "yfps", os.path.join(os.path.dirname(__file__), "..", "yealink-fritzbox-phonebook-sync.py")
 )
