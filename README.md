@@ -185,6 +185,7 @@ All configuration is via environment variables. CLI flags override env vars but 
 | `SYNC_AUTH_USER` | *(empty)* | HTTP Basic Auth username — set to protect the phonebook |
 | `SYNC_AUTH_PASSWORD` | *(empty)* | HTTP Basic Auth password |
 | `SYNC_ALLOWED_IPS` | *(empty)* | Optional allowlist: comma-separated IPs or CIDR ranges; empty = allow all |
+| `SYNC_CACHE_DIR` | *(empty)* | Optional persistent phonebook cache directory — bridges restarts while the Fritzbox is unreachable; empty = in-memory only |
 | `SYNC_LOG_LEVEL` | `INFO` | Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL |
 | `SYNC_LOG_FORMAT` | `text` | Log format: `text` or `json` (for log aggregation) |
 

@@ -24,11 +24,19 @@ services:
       SYNC_LOG_LEVEL: ${SYNC_LOG_LEVEL:-INFO}
       SYNC_LOG_FORMAT: ${SYNC_LOG_FORMAT:-text}
       SYNC_ALLOWED_IPS: ${SYNC_ALLOWED_IPS:-}
+      SYNC_CACHE_DIR: ${SYNC_CACHE_DIR:-}
     # Read-only root filesystem for defense in depth.
     # The app needs no writable paths — all state is in-memory.
+    # Exception: set SYNC_CACHE_DIR and mount a volume for the optional
+    # persistent phonebook cache (see volumes below).
     read_only: true
     tmpfs:
       - /tmp
+    # Optional: persistent phonebook cache (bridges restarts while the
+    # Fritzbox is unreachable). Uncomment and set SYNC_CACHE_DIR=/data
+    # in your .env to enable.
+    # volumes:
+    #   - ./phonebook-cache:/data
     security_opt:
       - no-new-privileges:true
     cap_drop:
