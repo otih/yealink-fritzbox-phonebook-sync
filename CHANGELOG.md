@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **One PR per change** (CONTRIBUTING): every feature, fix, docs or CI
+  change ships as its own pull request — one referencable unit each.
+  The release PR (dev → main) is the only aggregation point. The dev →
+  main merge rule is now also documented as **merge, never squash**
+  (squashing the long-lived-branch merge breaks the shared history —
+  the v0.10.1 conflict lesson).
+
 ## [0.10.2] - 2026-10-26
 
 ### Fixed
