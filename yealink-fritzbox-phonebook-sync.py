@@ -67,7 +67,7 @@ logger = logging.getLogger("fritz-pb-sync")
 # App version: the single source of truth for humans (startup log),
 # the /metrics endpoint (yfps_build_info) and the release process.
 # Bump on every release (keep in sync with CHANGELOG.md and git tags).
-APP_VERSION = "0.10.0"
+APP_VERSION = "0.10.1"
 
 
 class _RateLimiter:
@@ -238,6 +238,23 @@ def _parse_bool(value: str, setting: str = "SYNC_DEDUP_CONTACTS") -> bool:
     raise ValueError(
         "Invalid %s value %r (use 1/true/yes/on or 0/false/no/off, empty = off)" % (setting, value)
     )
+
+
+def _parse_int_env(name: str, default: str) -> int:
+    """Read an integer env variable; fail fast with the VARIABLE NAME.
+
+    A raw int() here would crash argparse construction with a Python
+    traceback that never names the setting (observed: FB_PORT=abc) —
+    the user could not tell WHAT to fix. Raises ValueError naming the
+    env variable and the expected format.
+    """
+    raw = os.getenv(name, default)
+    try:
+        return int(raw)
+    except ValueError:
+        # noqa: B904 — the int() message adds nothing for the user; the
+        # variable name and expected format are the actionable part.
+        raise ValueError("Invalid %s value %r (must be an integer)" % (name, raw)) from None
 
 
 def _validate_config(cfg: dict) -> None:
@@ -1275,7 +1292,8 @@ def _run_check(client: FritzboxClient, phonebook_id_arg: str) -> int:
 # ---------------------------------------------------------------------------
 
 
-def main() -> None:
+def _build_arg_parser() -> argparse.ArgumentParser:
+    """Construct the CLI parser (env defaults parsed here — see main)."""
     p = argparse.ArgumentParser(
         description="Fritzbox → Yealink phonebook sync server",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1287,7 +1305,7 @@ def main() -> None:
         help="Print the version and exit (single source: APP_VERSION).",
     )
     p.add_argument("--fritzbox-host", default=os.getenv("FB_HOST", "fritz.box"))
-    p.add_argument("--fritzbox-port", type=int, default=int(os.getenv("FB_PORT", "49000")))
+    p.add_argument("--fritzbox-port", type=int, default=_parse_int_env("FB_PORT", "49000"))
     p.add_argument("--fritzbox-user", default=os.getenv("FB_USER", ""))
     p.add_argument("--fritzbox-password", default=os.getenv("FB_PASSWORD", ""))
     p.add_argument(
@@ -1295,11 +1313,11 @@ def main() -> None:
         default=os.getenv("FB_PHONEBOOK_ID", ""),
         help="Single ID (e.g. '1'), multiple (e.g. '0,1'), or empty for all",
     )
-    p.add_argument("--listen-port", type=int, default=int(os.getenv("SYNC_LISTEN_PORT", "8080")))
+    p.add_argument("--listen-port", type=int, default=_parse_int_env("SYNC_LISTEN_PORT", "8080"))
     p.add_argument(
         "--refresh-interval",
         type=int,
-        default=int(os.getenv("SYNC_REFRESH_INTERVAL", "3600")),
+        default=_parse_int_env("SYNC_REFRESH_INTERVAL", "3600"),
         help="Seconds between syncs (default: 3600 = 1h)",
     )
     p.add_argument(
@@ -1354,7 +1372,19 @@ def main() -> None:
         "entry and collapse duplicate numbers (default: off — contacts pass through "
         "as the Fritzbox delivers them). Sorting is always on.",
     )
-    args = p.parse_args()
+    return p
+
+
+def main() -> None:
+    # Env parsing for argparse defaults happens DURING parser construction
+    # (_build_int_env / _parse_bool) — wrap it so garbage produces the
+    # same clean "Configuration error: …" as every later check, never a
+    # Python traceback.
+    try:
+        args = _build_arg_parser().parse_args()
+    except ValueError as exc:
+        print("Configuration error: %s" % exc, file=sys.stderr)
+        sys.exit(1)
 
     try:
         log_level = _parse_log_level(args.log_level)

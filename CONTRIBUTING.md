@@ -26,20 +26,34 @@ Both tools install with `pip install ruff pytest`.
 2. **TDD for new features.** Write the failing test first
    (`tests/test_*.py`), then the implementation. The CI test matrix
    (Python 3.13/3.14/3.15) catches version-specific regressions.
-3. **Keep the changelog current.** Every user- or security-relevant change
+3. **Negative tests are mandatory, not optional.** Every new behavior
+   ships with tests for what it must REJECT, in three categories:
+   - **Config garbage:** for every new env var / CLI flag, ask "what is
+     the dumbest value someone could type?" and test that it aborts
+     startup with exit code 1 **and an error naming the variable**
+     (see `tests/test_negative_config.py` for the pattern — a raw
+     traceback that does not name the setting violates the contract).
+   - **HTTP edge cases:** malformed headers, unknown paths, wrong IDs
+     → the expected status code, never a crash.
+   - **XML data garbage:** corrupt input, empty phonebooks, contacts
+     without numbers → defined behavior instead of an exception.
+   Positive tests alone prove the happy path — they would NOT have
+   caught `SYNC_DEDUP_CONTACTS=treu` silently meaning "off" (found
+   2026-10-26); the negative test would have.
+4. **Keep the changelog current.** Every user- or security-relevant change
    gets its entry under `[Unreleased]` in `CHANGELOG.md` **in the same
    commit** as the change — never bundled later into the release.
-4. **Docs are part of the feature.** Before finishing any change, check
+5. **Docs are part of the feature.** Before finishing any change, check
    whether the README, the docs site (`docs/`), `.env.example`, or the
    CHANGELOG need updating — new config → `.env.example` +
    `docs/configuration.md` + README table; new endpoint/behavior → README +
    `docs/index.md`; user-visible change → CHANGELOG. Update them in the
    same commit as the feature.
-5. **No breaking changes without a major version bump.** Existing env vars,
+6. **No breaking changes without a major version bump.** Existing env vars,
    CLI flags, XML output format, and HTTP endpoints must keep working.
    If a change is unavoidable, document it in the changelog and bump the
    major version.
-6. **Test against real hardware before submitting.** At minimum: build the
+7. **Test against real hardware before submitting.** At minimum: build the
    Docker image (`docker build .`) and check that the container boots and
    `/health` responds. Ideally, verify against a real Fritzbox + Yealink.
 
