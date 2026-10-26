@@ -359,9 +359,14 @@ jobs:
           done
           curl -sk https://127.0.0.1:18443/health | grep -q '"status":"ok"'
 
-          docker run --rm --network host drwetter/testssl.sh:3.3 \
+          docker run --rm --network host drwetter/testssl.sh:3.2 \
             --nodns none --quiet --color 0 \
             127.0.0.1:18443 > report.txt 2>&1 || true
+          if [ ! -s report.txt ]; then
+            echo "::error::testssl.sh produced no report — scan failed"
+            docker logs yfps-e2e-tls 2>&1 | tail -20
+            exit 1
+          fi
 
           fail=0
           assert_contains() {
