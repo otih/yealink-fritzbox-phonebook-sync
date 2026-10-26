@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **TLS baseline regression gate in CI:** the audited TLS posture
+  (protocols, cipher categories, server cipher order, the negotiable
+  suite set, HSTS, vulnerability spot checks) is now asserted on every
+  run with testssl.sh 3.3 (pinned) — 19 hard assertions from the
+  2026-10-26 audit. Integrated into the required E2E job, so a TLS
+  regression blocks merges and image publication. Deliberate posture
+  changes update the assertions in the same PR that changes them.
+
 ### Security
 
 - **TLS hardened to SSL-Labs A+ style (audit 2026-10-26):** explicit

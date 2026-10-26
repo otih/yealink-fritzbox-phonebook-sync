@@ -331,8 +331,101 @@ jobs:
           docker logs yfps-e2e-cached
           exit 1
 
+      - name: TLS baseline (testssl.sh, audited 2026-10-26)
+        # The BASELINE from the audit — every assertion is hard. This
+        # step lives in the e2e job ON PURPOSE: e2e is a required check
+        # in the branch ruleset, so a TLS regression blocks merges and
+        # image publication without any ruleset change. If a change
+        # legitimately alters the TLS posture, update the assertions
+        # HERE and document why.
+        run: |
+          openssl req -x509 -newkey rsa:2048 -keyout /tmp/key.pem \
+            -out /tmp/cert.pem -days 2 -nodes -subj "/CN=localhost" 2>/dev/null
+
+          docker run -d --rm \
+            -e FB_HOST=192.0.2.1 \
+            -e FB_USER=dummy -e FB_PASSWORD=dummy \
+            -e SYNC_SERVER_URL=https://127.0.0.1:18443 \
+            -e SYNC_TLS_CERT=/certs/cert.pem \
+            -e SYNC_TLS_KEY=/certs/key.pem \
+            -v /tmp:/certs:ro \
+            -p 18443:8080 \
+            --name yfps-e2e-tls \
+            yfps-e2e:local
+
+          for i in $(seq 1 20); do
+            curl -sk https://127.0.0.1:18443/health > /dev/null 2>&1 && break
+            sleep 1
+          done
+          curl -sk https://127.0.0.1:18443/health | grep -q '"status":"ok"'
+
+          docker run --rm --network host drwetter/testssl.sh:3.3 \
+            --nodns none --quiet --color 0 \
+            127.0.0.1:18443 > report.txt 2>&1 || true
+
+          fail=0
+          assert_contains() {
+            if grep -qF "$2" report.txt; then
+              echo "OK: $1"
+            else
+              echo "::error::BASELINE REGRESSION: expected '$2' ($1)"
+              fail=1
+            fi
+          }
+          assert_absent() {
+            if grep -qF "$2" report.txt; then
+              echo "::error::BASELINE REGRESSION: forbidden '$2' ($1)"
+              fail=1
+            else
+              echo "OK: $1"
+            fi
+          }
+
+          # --- Protocols (floor: TLS 1.2, explicit) ---
+          assert_contains "SSLv2 off"       "SSLv2      not offered"
+          assert_contains "SSLv3 off"       "SSLv3      not offered"
+          assert_contains "TLS 1.0 off"     "TLS 1      not offered"
+          assert_contains "TLS 1.1 off"     "TLS 1.1    not offered"
+          assert_contains "TLS 1.2 on"      "TLS 1.2    offered"
+          assert_contains "TLS 1.3 on"      "TLS 1.3    offered"
+
+          # --- Cipher categories (all weak classes must stay off) ---
+          assert_contains "NULL ciphers off"      "NULL ciphers (no encryption)                      not offered"
+          assert_contains "LOW ciphers off"       "LOW: 64 Bit + DES, RC[2,4], MD5 (w/o export)      not offered"
+          assert_contains "3DES off"              "Triple DES Ciphers / IDEA                         not offered"
+          assert_contains "CBC off"               "Obsoleted CBC ciphers (AES, ARIA etc.)            not offered"
+          assert_contains "static-RSA AEAD off"   "Strong encryption (AEAD ciphers) with no FS       not offered"
+          assert_contains "FS AEAD on"            "Forward Secrecy strong encryption (AEAD ciphers)  offered"
+
+          # --- Cipher order + the exact negotiable suite set ---
+          assert_contains "server cipher order"   " Has server cipher order?     yes (OK)"
+          # Static-RSA/CBC suites appear with their hexcode at line start
+          # (e.g. " AES128-GCM-SHA256"); the ECDHE variants are legit and
+          # must NOT match these needles.
+          assert_absent  "CBC suite negotiated"    " ECDHE-RSA-AES128-SHA "
+          assert_absent  "static RSA suite"        " AES128-GCM-SHA256 "
+
+          # --- HSTS (A+ requirement, TLS responses only) ---
+          assert_contains "HSTS 365d"              " Strict Transport Security    365 days=31536000 s, includeSubDomains"
+
+          # --- Vulnerability spot checks from the audit ---
+          assert_contains "Heartbleed clean"       "Heartbleed (CVE-2014-0160)                not vulnerable"
+          assert_contains "POODLE clean"            "POODLE, SSL (CVE-2014-3566)               not vulnerable"
+          assert_contains "ROBOT clean"             "ROBOT                                     Server does not support any cipher suites that use RSA key transport"
+
+          grep -E "Overall Grade|Grade cap" report.txt || true
+          exit $fail
+
+      - name: Upload testssl report (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testssl-report
+          path: report.txt
+
       - name: SIGTERM must stop the container quickly
         run: |
           timeout 10 docker stop yfps-e2e
           timeout 10 docker stop yfps-e2e-cached || true
+          timeout 10 docker stop yfps-e2e-tls || true
           echo "Graceful stop OK"
