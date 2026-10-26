@@ -54,6 +54,7 @@ import random
 import re
 import signal
 import socket
+import ssl
 import sys
 import threading
 import time
@@ -907,9 +908,55 @@ ip_allowlist = _IpAllowlist("")
 _SERVER_CLASS = ThreadingHTTPServer
 
 
-def _make_server(host: str, port: int) -> ThreadingHTTPServer:
-    """Create the (threading) HTTP server — factory for tests and main."""
-    return _SERVER_CLASS((host, port), PhonebookHandler)
+def _load_tls_config() -> tuple[str, str] | None:
+    """Load the optional TLS configuration from SYNC_TLS_CERT/KEY.
+
+    Returns (cert_path, key_path) when BOTH are set, None when BOTH are
+    unset (default: plain HTTP, unchanged behavior). One without the
+    other or unreadable files abort with a ValueError naming the
+    setting — same fail-fast contract as every other setting.
+
+    Trust management is deliberately NOT this tool's job: the phone must
+    trust the certificate (publicly signed cert for a real hostname, or
+    a CA rolled out on the phone). See docs/configuration.md.
+    """
+    cert = os.getenv("SYNC_TLS_CERT", "")
+    key = os.getenv("SYNC_TLS_KEY", "")
+    if not cert and not key:
+        return None
+    if cert and not key:
+        raise ValueError("SYNC_TLS_CERT is set but SYNC_TLS_KEY is missing — set both or neither")
+    if key and not cert:
+        raise ValueError("SYNC_TLS_KEY is set but SYNC_TLS_CERT is missing — set both or neither")
+    for path, setting in ((cert, "SYNC_TLS_CERT"), (key, "SYNC_TLS_KEY")):
+        if not os.path.isfile(path):
+            raise ValueError("Invalid %s value %r (file not found)" % (setting, path))
+    return cert, key
+
+
+def _make_server(
+    host: str, port: int, tls_cert: str | None = None, tls_key: str | None = None
+) -> ThreadingHTTPServer:
+    """Create the (threading) HTTP server — factory for tests and main.
+
+    With tls_cert/tls_key the socket is wrapped in TLS (strictly opt-in;
+    without them this is the unchanged plain-HTTP server). Wrapping at
+    get_request level keeps every handler, auth, metric and endpoint
+    byte-identical under https.
+    """
+    srv = _SERVER_CLASS((host, port), PhonebookHandler)
+
+    if tls_cert and tls_key:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(tls_cert, tls_key)
+        orig_get_request = srv.get_request
+
+        def _tls_get_request():
+            sock, addr = orig_get_request()
+            return ctx.wrap_socket(sock, server_side=True), addr
+
+        srv.get_request = _tls_get_request  # type: ignore[method-assign]
+    return srv
 
 
 def _placeholder_menu(server_base: str) -> str:
@@ -1592,7 +1639,13 @@ def main() -> None:
     # HTTP server — binding to all interfaces (S104) is intentional:
     # the Yealink phone on the LAN must be able to reach this server.
     # Restrict via container network policy or a reverse proxy if needed.
-    srv = _SERVER_CLASS(("0.0.0.0", args.listen_port), PhonebookHandler)  # noqa: S104
+    try:
+        tls = _load_tls_config()
+    except ValueError as exc:
+        logger.error("Configuration error: %s", exc)
+        sys.exit(1)
+    tls_cert, tls_key = tls or (None, None)
+    srv = _make_server("0.0.0.0", args.listen_port, tls_cert, tls_key)  # noqa: S104
     logger.info("=" * 60)
     logger.info("yealink-fritzbox-phonebook-sync v%s starting", APP_VERSION)
     logger.info("Listening on http://0.0.0.0:%d", args.listen_port)

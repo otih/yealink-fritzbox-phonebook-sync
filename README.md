@@ -213,6 +213,8 @@ All configuration is via environment variables. CLI flags override env vars but 
 | `SYNC_ALLOWED_IPS` | *(empty)* | Optional allowlist: comma-separated IPs or CIDR ranges; empty = allow all |
 | `SYNC_CACHE_DIR` | *(empty)* | Optional persistent phonebook cache directory — bridges restarts while the Fritzbox is unreachable; empty = in-memory only |
 | `SYNC_DEDUP_CONTACTS` | *(off)* | Optional: merge same-name contacts within one phonebook into a single entry and collapse duplicate numbers. Off = contacts pass through as the Fritzbox delivers them (pre-0.8.0 behavior). Sorting is always on |
+| `SYNC_TLS_CERT` | *(empty)* | Optional TLS: PEM certificate path — set together with `SYNC_TLS_KEY` to serve HTTPS; empty = plain HTTP. The phone must trust the cert (see docs) |
+| `SYNC_TLS_KEY` | *(empty)* | Optional TLS: PEM private key path (set together with `SYNC_TLS_CERT`) |
 | `SYNC_LOG_LEVEL` | `INFO` | Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL |
 | `SYNC_LOG_FORMAT` | `text` | Log format: `text` or `json` (for log aggregation) |
 

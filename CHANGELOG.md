@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Optional TLS (`SYNC_TLS_CERT` / `SYNC_TLS_KEY`):** set both to serve
+  the phonebook over HTTPS; unset (default) keeps plain HTTP unchanged.
+  One without the other or a missing file aborts startup naming the
+  setting. **Certificate trust is documented as the operator's
+  responsibility:** publicly signed certificate for a real hostname, or
+  your own CA rolled out on the phone — ACME/renewal happens outside
+  this tool (certbot/caddy/traefik in front, renewed files re-read on
+  every start).
+
+### Added
+
 - **`/all.xml` — combined flat directory:** all phonebooks merged into
   one YealinkIPPhoneDirectory, alphabetically sorted across phonebook
   boundaries. For phones with a single remote-phonebook slot where the

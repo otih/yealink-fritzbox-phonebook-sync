@@ -87,6 +87,38 @@ In both settings: contacts are always sorted alphabetically
 (case-insensitive, umlaut-aware), and the same name in two different
 phonebooks always stays separate (each phonebook is its own menu entry).
 
+## TLS (optional)
+
+Set BOTH `SYNC_TLS_CERT` and `SYNC_TLS_KEY` to serve the phonebook over
+HTTPS instead of plain HTTP — strictly opt-in; unset (default) keeps the
+unchanged plain-HTTP behavior.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SYNC_TLS_CERT` | *(empty)* | Path to the PEM certificate file |
+| `SYNC_TLS_KEY` | *(empty)* | Path to the PEM private key file |
+
+One without the other, or a missing file, aborts startup with a clear
+error naming the setting. Docker: mount cert and key read-only and set
+the paths, e.g. `-v ./certs:/certs:ro -e SYNC_TLS_CERT=/certs/cert.pem
+SYNC_TLS_KEY=/certs/key.pem`.
+
+**Certificate trust is YOUR responsibility, not this tool's.** The
+Yealink phone must trust the certificate it sees, otherwise it silently
+fails to fetch the phonebook. Two supported ways:
+
+1. **A publicly signed certificate** for a real hostname (e.g. from
+   Let's Encrypt) — requires the phone to reach the server under that
+   hostname and the CA chain (usually already trusted by the phone).
+   Renewal/ACME is done OUTSIDE this tool (certbot, caddy, traefik —
+   mount the renewed files; the server reads them on every start).
+2. **Your own CA rolled out on the phone** — if the model supports
+   importing a trusted CA. Not every firmware does; check your model's
+   documentation before going this way.
+
+A self-signed certificate WITHOUT a trusted CA will make the phone
+reject the connection — test with a browser or `curl -v` first.
+
 ## Logging
 
 | Variable | Default | Description |
