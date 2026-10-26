@@ -120,6 +120,8 @@ On the Yealink web UI → **Directory → Remote Phone Book**:
 
 Click **Confirm**. The phone downloads the phonebook immediately and caches it locally.
 
+If it does not work, see the [Troubleshooting guide](https://otih.github.io/yealink-fritzbox-phonebook-sync/troubleshooting/) — symptom-first, from "phone shows nothing" to "stale data" and auth errors.
+
 If HTTP Basic Auth is enabled (see [Access control](#access-control-http-basic-auth)), embed the credentials in the URL since the AX83H does not have separate username/password fields for remote phonebooks.
 
 ## Fritzbox prerequisites
