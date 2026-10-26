@@ -115,6 +115,42 @@ now also survives container restarts.
   remote phonebook XML has no photo element; only the phone's local
   directory supports avatars.
 
+## Caller ID shows no phonebook origin (and which name wins)
+
+When a call comes in, the phone matches the caller's number against
+its directories and displays the first name it finds. Two effects of
+that firmware behavior are worth knowing:
+
+- **The display never shows WHICH phonebook a matched contact came
+  from.** The phone sees one remote-phonebook source (this server's
+  `/menu.xml` with its sub-phonebooks) — it has no notion of "Work"
+  vs. "Privat" during caller-ID matching.
+- **If a number exists in several sources, the source order decides
+  which name is displayed.** Yealink phones support a priority list
+  over directory TYPES via provisioning:
+  `directory_setting.lookup_call_in.priority` (incoming) and
+  `directory_setting.lookup_call_out.priority` (outgoing), a ranked
+  list of 14 directory types (e.g. 2 = local directory, 6 = remote
+  phonebook). A source not in the list is skipped; disabled sources
+  are skipped even if listed. Check your phone's admin guide for the
+  exact parameter — this is a PHONE setting, not something this
+  server controls.
+
+**Within this server's remote phonebook:** the order in which the
+phone searches the sub-phonebooks for a matching number is firmware
+behavior — the server cannot set a priority between them. If the same
+number exists in two Fritzbox phonebooks under different names, which
+name the phone displays may not be obvious. Options:
+
+1. **Watch it once:** call yourself from a number that exists in both
+   books and see which name appears — that tells you the effective
+   order on your firmware.
+2. **Make the numbers unique per book** (clean up the duplicates at
+   the Fritzbox side), or
+3. **Request a name-prefix feature** — a prefix per phonebook (e.g.
+   `W: Müller`) would make the origin visible in the display. Not
+   implemented today; open an issue if you need it.
+
 ## Container restarts repeatedly
 
 - `docker inspect --format '{{.State.Health.Status}}' <container>` and
