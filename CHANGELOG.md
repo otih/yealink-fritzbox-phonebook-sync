@@ -47,6 +47,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   check). Never starts the HTTP server. Replaces the README's former
   copy-paste Python snippet for finding phonebook IDs.
 
+### Added (docs)
+
+- **Troubleshooting guide** (`docs/troubleshooting.md`, linked from the
+  README): symptom-first walk-through of the most common failure
+  patterns — placeholder menu, unreachable Fritzbox (incl. the
+  IPv6-only `fritz.box` quirk), 401/403/429 on the phone, stale data
+  (the three metric clocks), missing contacts, restart loops — each
+  with the exact commands, log lines and metrics that answer it.
+  Anchored on `--check` as the first diagnostic move.
+
 ## [0.7.0] - 2026-10-25
 
 ### Added

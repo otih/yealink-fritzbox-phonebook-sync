@@ -13,3 +13,4 @@ nav:
   - Overview: index.md
   - Configuration: configuration.md
   - Metrics & Alerting: metrics.md
+  - Troubleshooting: troubleshooting.md
