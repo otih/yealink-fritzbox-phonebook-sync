@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Grafana dashboard (`grafana/phonebook-sync-dashboard.json`):**
+  importable dashboard covering all 13 exported metrics, grouped by
+  question — Health & Version (up, version, degraded, sync age,
+  success/failure rate), Phonebooks & Contacts (per-phonebook contact
+  counts to spot a broken upstream import), Phones (fetch rate, fetch
+  age per handset IP, last fetch timestamp), Security (rejected auth
+  attempts, rate-limited requests). Expects the documented
+  `yealink-phonebook-sync` scrape job name.
+
 ## [0.11.0] - 2026-10-26
 
 ### Added

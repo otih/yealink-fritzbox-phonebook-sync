@@ -268,7 +268,7 @@ Invalid values (port ranges, non-numeric phonebook IDs, non-positive refresh int
 | `/all.xml` | YealinkIPPhoneDirectory — ALL phonebooks merged into one flat, alphabetically sorted directory (for phones with a single remote-phonebook slot) |
 | `/contacts/<id>.xml` | YealinkIPPhoneDirectory — contacts for a specific phonebook |
 | `/health` | JSON status: `{"status":"ok","contacts":193,"last_sync_age_sec":42}` |
-| `/metrics` | Prometheus metrics: `yfps_build_info` (version), `yfps_degraded` (server-computed staleness flag), Fritzbox-side sync counters/age, phone-side fetch counters/age (when did the phone last pull?), contact and phonebook counts. See [Metrics & Alerting](https://otih.github.io/yealink-fritzbox-phonebook-sync/metrics/) for the reference, Prometheus scrape config and suggested alert rules |
+| `/metrics` | Prometheus metrics: `yfps_build_info` (version), `yfps_degraded` (server-computed staleness flag), Fritzbox-side sync counters/age, phone-side fetch counters/age (when did the phone last pull?), contact and phonebook counts. See [Metrics & Alerting](https://otih.github.io/yealink-fritzbox-phonebook-sync/metrics/) for the reference, Prometheus scrape config, suggested alert rules and the importable Grafana dashboard |
 
 `/health` and `/metrics` are served without authentication (operational data
 only, no contact details); all phonebook endpoints require HTTP Basic Auth
