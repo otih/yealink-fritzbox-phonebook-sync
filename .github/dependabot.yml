@@ -3,6 +3,10 @@ updates:
   # GitHub Actions versions (pinned by tag; digest-pinning for trivy already)
   - package-ecosystem: github-actions
     directory: /
+    # Dependency updates integrate via dev, not main — main is the
+    # release branch (dev-branch model since 2026-10-26): every change,
+    # including dependency bumps, flows dev → main at release time.
+    target-branch: dev
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
@@ -14,6 +18,7 @@ updates:
   # Docker base image tag (python:3.15-alpine in the Dockerfile)
   - package-ecosystem: docker
     directory: /
+    target-branch: dev
     schedule:
       interval: weekly
     open-pull-requests-limit: 2

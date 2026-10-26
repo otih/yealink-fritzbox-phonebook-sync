@@ -66,6 +66,9 @@ the commit prefix, so branch, commits, and PR title tell the same story:
   `ci/pr-only-mode`, `release/v0.5.0`).
 - A PR references its issue in the description (`Fixes #123`) — the number
   in the branch name is a reading aid, not a substitute.
+- Feature/fix/docs branches base on and PR into `dev` (see
+  [Branch model](#branch-model-dev--main)); `release/v<x.y.z>` branches
+  carry the release commit into `dev` before the release PR.
 
 ## Versioning concept
 
@@ -96,9 +99,36 @@ Rules of application:
 The AI agent with release authority for this project applies exactly this
 table; when a change does not clearly fit a row, it asks the maintainer.
 
+## Branch model (dev → main)
+
+Since 2026-10-26 the repository uses a two-branch model — `main` always
+corresponds exactly to the last release:
+
+- **`dev` — integration branch.** All feature/fix/docs PRs target `dev`.
+  Every dev push publishes a `:dev` image to GHCR (through the full CVE
+  gate) for testing on a host. `[Unreleased]` collects here.
+- **`main` — release branch.** `main` receives changes **only** through
+  the release PR (dev → main) and always carries `APP_VERSION` matching
+  the latest tag. `:main` / `:latest` images are only ever release builds.
+
+Release flow (the dev → main PR **is** the release):
+
+1. Features merge into `dev` (squash) and collect in `[Unreleased]`.
+2. When a release is due, the release commit (APP_VERSION bump,
+   CHANGELOG section rename, image pins) lands **on dev**.
+3. Open the dev → main PR, wait for green CI, squash-merge.
+4. Tag `v<x.y.z>` on the merge commit, wait for the tag build, create the
+   GitHub release — after that, main, tag, image and APP_VERSION agree.
+
+This replaces the previous "release per feature directly from main":
+`APP_VERSION` on main can never lag behind the deployed code again, and
+unreleased work never sits on the branch users watch.
+
 ## Pull requests
 
 - PRs run the full CI: lint → tests → E2E container smoke test.
-- The Docker image is only published from `main` after the vulnerability
-  gate passes — PRs never publish.
+- Feature/fix PRs target `dev`; the only PR ever targeting `main` is the
+  release PR.
+- PRs never publish images; dev pushes publish `:dev`, main pushes publish
+  `:main`/`:latest` — all behind the vulnerability gate.
 - Reference the issue you fix (`Fixes #123`).
