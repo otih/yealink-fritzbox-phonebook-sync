@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Contact dedup is now opt-in (`SYNC_DEDUP_CONTACTS`):** merging
+  same-name contacts within one phonebook (and collapsing duplicate
+  numbers) was always-on in 0.8.0 — it is now controlled by
+  `SYNC_DEDUP_CONTACTS` (env) / `--dedup-contacts` (flag) and **off by
+  default**: contacts pass through exactly as the Fritzbox delivers
+  them (pre-0.8.0 behavior). Set `SYNC_DEDUP_CONTACTS=1` to keep the
+  0.8.0 merging behavior. Alphabetical sorting (case-insensitive,
+  umlaut-aware) remains always-on, as does the scoping: with dedup
+  enabled, the same name in two different phonebooks stays separate.
+
 ## [0.8.0] - 2026-10-26
 
 ### Added

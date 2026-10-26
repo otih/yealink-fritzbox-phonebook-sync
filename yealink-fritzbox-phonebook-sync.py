@@ -527,7 +527,9 @@ def _extract_numbers(numbers_elem: ET.Element) -> list[tuple[str, str]]:
     return numbers
 
 
-def convert_single_phonebook(fritzbox_xml_bytes: bytes) -> tuple[str, str, int]:
+def convert_single_phonebook(
+    fritzbox_xml_bytes: bytes, dedup_contacts: bool = False
+) -> tuple[str, str, int]:
     """
     Convert a single Fritzbox phonebook XML to Yealink DirectoryEntry format.
 
@@ -536,12 +538,17 @@ def convert_single_phonebook(fritzbox_xml_bytes: bytes) -> tuple[str, str, int]:
     Each <Telephone> gets a label attribute mapped from the Fritzbox number type.
     Internal Fritzbox numbers (**9, **600, etc.) are filtered out.
 
-    Contacts are deduplicated WITHIN one phonebook: entries with the same
-    folded name merge into one DirectoryEntry (numbers combined; duplicate
-    numbers collapse to a single <Telephone>, first non-empty label wins).
-    The same name in two different <phonebook> elements is NOT merged.
-    Output is sorted alphabetically (case-insensitive, umlaut-folded) —
-    the phone shows a sorted directory, not Fritzbox delivery order.
+    With dedup_contacts=True, entries with the same folded name merge into
+    one DirectoryEntry (numbers combined; duplicate numbers collapse to a
+    single <Telephone>, first non-empty label wins) — scoped to one
+    phonebook: the same name in two different <phonebook> elements is NOT
+    merged. With dedup_contacts=False (the default), contacts pass through
+    as delivered — same-name contacts and duplicate numbers stay as the
+    Fritzbox delivered them (pre-0.8.0 semantics).
+
+    Sorting is ALWAYS on: output is sorted alphabetically (case-insensitive,
+    umlaut-folded) — the phone shows a sorted directory, not Fritzbox
+    delivery order.
     """
     root = ET.fromstring(fritzbox_xml_bytes)  # noqa: S314 — trusted Fritzbox source, see security note
 
@@ -562,6 +569,7 @@ def convert_single_phonebook(fritzbox_xml_bytes: bytes) -> tuple[str, str, int]:
         # two different <phonebook> blocks must remain separate entries.
         # key → [display_name, [(number, label), ...]]
         merged: dict[str, list] = {}
+        passthrough: list[tuple[str, list[tuple[str, str]]]] = []
         for contact in phonebook:
             if _strip_ns(contact.tag) != "contact":
                 continue
@@ -597,6 +605,11 @@ def convert_single_phonebook(fritzbox_xml_bytes: bytes) -> tuple[str, str, int]:
             if not numbers:
                 continue
 
+            if not dedup_contacts:
+                # Pass through as delivered (pre-0.8.0 semantics)
+                passthrough.append((name, numbers))
+                continue
+
             # Merge contacts sharing the same folded name (within this
             # phonebook): numbers are combined, duplicate numbers collapse
             # to one <Telephone> keeping the first non-empty label.
@@ -615,8 +628,12 @@ def convert_single_phonebook(fritzbox_xml_bytes: bytes) -> tuple[str, str, int]:
 
         # Emit sorted by folded name — case-insensitive, umlaut-aware.
         # Display names keep their original casing ("Zorro", not "zorro").
-        for key in sorted(merged):
-            display_name, numbers = merged[key]
+        entries: list[tuple[str, list[tuple[str, str]]]] = (
+            [(merged[key][0], merged[key][1]) for key in sorted(merged)]
+            if dedup_contacts
+            else sorted(passthrough, key=lambda e: _sort_key(e[0]))
+        )
+        for display_name, numbers in entries:
             lines.append("  <DirectoryEntry>")
             lines.append("    <Name>%s</Name>" % _escape_xml(display_name))
             for num, label in numbers:
@@ -693,6 +710,13 @@ state = State()
 # Set in main(); kept module-global like auth_user so the sync path can
 # persist snapshots without threading the path through every signature.
 cache_dir = ""
+
+# Opt-in contact deduplication (SYNC_DEDUP_CONTACTS / --dedup-contacts).
+# False (default) = contacts pass through as the Fritzbox delivers them
+# (pre-0.8.0 semantics). True = same-name contacts within one phonebook
+# merge into a single entry, duplicate numbers collapse to one element.
+# Sorting is always on, independent of this flag.
+dedup_contacts = False
 
 
 def _cache_path(directory: str) -> str:
@@ -1046,7 +1070,7 @@ def sync_once(
 
     for pid in phonebook_ids:
         raw = client.fetch_phonebook(pid)
-        pb_name, contacts_xml, count = convert_single_phonebook(raw)
+        pb_name, contacts_xml, count = convert_single_phonebook(raw, dedup_contacts)
         contacts_map[pid] = contacts_xml
         pb_meta.append({"id": pid, "name": pb_name, "count": count})
         total += count
@@ -1150,7 +1174,7 @@ def _run_check(client: FritzboxClient, phonebook_id_arg: str) -> int:
     for pid in check_ids:
         try:
             raw = client.fetch_phonebook(pid)
-            name, _xml, count = convert_single_phonebook(raw)
+            name, _xml, count = convert_single_phonebook(raw, dedup_contacts)
             if count:
                 print("OK: phonebook %d '%s': %d contact(s)" % (pid, name, count))
             else:
@@ -1237,6 +1261,14 @@ def main() -> None:
         default=False,
         help="Diagnostic mode: connect to the Fritzbox once, list phonebook IDs and "
         "contact counts, then exit (0 = OK, 1 = problem found). Never starts the server.",
+    )
+    p.add_argument(
+        "--dedup-contacts",
+        action="store_true",
+        default=os.getenv("SYNC_DEDUP_CONTACTS", "").lower() in ("1", "true", "yes", "on"),
+        help="Merge contacts with the same name within one phonebook into a single "
+        "entry and collapse duplicate numbers (default: off — contacts pass through "
+        "as the Fritzbox delivers them). Sorting is always on.",
     )
     args = p.parse_args()
 
@@ -1346,6 +1378,12 @@ def main() -> None:
         state.menu_xml = _placeholder_menu(external_url)
         # Remember the interval for the /metrics degraded evaluation
         state.refresh_interval = args.refresh_interval
+
+    # Contact dedup flag (set from --dedup-contacts / SYNC_DEDUP_CONTACTS)
+    global dedup_contacts
+    dedup_contacts = args.dedup_contacts
+    if dedup_contacts:
+        logger.info("Contact dedup enabled: same-name contacts within one phonebook are merged")
 
     # Persistent cache: restore the last snapshot (if configured) so a
     # restart while the Fritzbox is unreachable still serves real data.

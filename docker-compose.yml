@@ -25,6 +25,7 @@ services:
       SYNC_LOG_FORMAT: ${SYNC_LOG_FORMAT:-text}
       SYNC_ALLOWED_IPS: ${SYNC_ALLOWED_IPS:-}
       SYNC_CACHE_DIR: ${SYNC_CACHE_DIR:-}
+      SYNC_DEDUP_CONTACTS: ${SYNC_DEDUP_CONTACTS:-}
     # Read-only root filesystem for defense in depth.
     # The app needs no writable paths — all state is in-memory.
     # Exception: set SYNC_CACHE_DIR and mount a volume for the optional

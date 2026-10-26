@@ -91,6 +91,10 @@ spec:
                 secretKeyRef:
                   name: fritzbox-creds
                   key: SYNC_AUTH_PASSWORD
+            # Optional: merge same-name contacts within one phonebook
+            # (off = pass through as delivered). Sorting is always on.
+            - name: SYNC_DEDUP_CONTACTS
+              value: ""
           # Mirror the Docker hardening from docker-compose.yml
           securityContext:
             readOnlyRootFilesystem: true
