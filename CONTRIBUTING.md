@@ -2,6 +2,11 @@
 
 Thanks for your interest in contributing!
 
+> This document is the binding development guideline for this project
+> (in BSI IT-Grundschutz terms: the "Richtlinie für die
+> Software-Entwicklung" per CON.8.A11). It is kept current with the
+> same discipline as code — changes to the process are PRs, too.
+
 ## Development setup
 
 ```bash
@@ -154,3 +159,49 @@ unreleased work never sits on the branch users watch.
 - PRs never publish images; dev pushes publish `:dev`, main pushes publish
   `:main`/`:latest` — all behind the vulnerability gate.
 - Reference the issue you fix (`Fixes #123`).
+
+## Release approval checklist (Freigabeerklärung)
+
+Every release is an approval decision, not just a merge. The release PR
+author works through this checklist BEFORE opening the dev → main
+release PR (in BSI IT-Grundschutz terms: the software release approval
+per OPS.1.1.6.A4). The completed checklist — with the CI run links —
+is the release's approval record; the GitHub release object documents
+the outcome.
+
+**Preconditions (block the release until all are green):**
+
+- [ ] All planned `[Unreleased]` changes are on `dev` and CI is green
+      on the dev HEAD (6/6 checks).
+- [ ] Test results match expectations: unit tests pass on all matrix
+      versions (3.13/3.14/3.15), E2E container smoke test green,
+      coverage above the gate (60%).
+- [ ] The vulnerability gate has passed for the code being released:
+      Trivy found no unfixed CRITICAL/HIGH findings in the release build.
+- [ ] Version bump is correct per the versioning table (breaking →
+      MINOR in 0.x + changelog callout, feature → MINOR, fix/docs →
+      PATCH) and matches the `[Unreleased]` entries.
+- [ ] All four version pins agree: `APP_VERSION`, CHANGELOG section
+      header, docker-compose image pin, README pull example (+ k8s.yaml
+      if it changed since the last release).
+- [ ] Docs are in sync: mkdocs builds strict-clean, the docs site
+      reflects any changed behavior, the threat model was updated if
+      the release adds attack surface.
+- [ ] No open questions on the release PR; the maintainer has seen the
+      release summary (surfaced in the conversation per the release
+      authority rule).
+
+**Maintainer-only items (cannot be automated; verify once, note in the
+release PR):**
+
+- [ ] Branch rulesets are active for `main` AND `dev` (6 required checks,
+      force-push/deletion blocked).
+- [ ] GitHub Pages deploy is healthy (docs.yml succeeded on main).
+
+**After the merge (verification, not preconditions):**
+
+- [ ] Tag on the merge commit, tag-CI green, version image verified in
+      the registry (APP_VERSION inside the container), `:latest`
+      revision label equals main HEAD.
+- [ ] GitHub release object created LAST (after tag-CI green — the
+      v0.9.0 lesson) with the CHANGELOG section as notes, `make_latest`.
