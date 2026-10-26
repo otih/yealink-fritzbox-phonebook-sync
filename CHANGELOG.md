@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Auth-off-by-default is now a documented risk acceptance:** the
+  README access-control section states the consequence (any LAN device
+  can read the phonebook while auth is unset), links the threat model
+  with rationale and revisit conditions, and names the mitigations.
+  This closes the BSI CON.8.A5 gap (defaults must enable secure
+  operation) the honest way: by formal acceptance instead of silence.
+
 ### Added
 
 - **Release approval checklist in CONTRIBUTING** (OPS.1.1.6.A4): the
