@@ -128,6 +128,8 @@ On the Yealink web UI → **Directory → Remote Phone Book**:
 
 Click **Confirm**. The phone downloads the phonebook immediately and caches it locally.
 
+**Single-slot phones:** if your model supports only one remote phonebook (no menu drill-in), point it at `http://<server-ip>:8080/all.xml` instead — it serves all phonebooks as one flat, alphabetically sorted directory.
+
 If it does not work, see the [Troubleshooting guide](https://otih.github.io/yealink-fritzbox-phonebook-sync/troubleshooting/) — symptom-first, from "phone shows nothing" to "stale data" and auth errors.
 
 If HTTP Basic Auth is enabled (see [Access control](#access-control-http-basic-auth)), embed the credentials in the URL since the AX83H does not have separate username/password fields for remote phonebooks.
@@ -261,6 +263,7 @@ Invalid values (port ranges, non-numeric phonebook IDs, non-positive refresh int
 | Path | Content |
 |------|---------|
 | `/menu.xml` | YealinkIPPhoneMenu — lists all phonebooks as selectable entries |
+| `/all.xml` | YealinkIPPhoneDirectory — ALL phonebooks merged into one flat, alphabetically sorted directory (for phones with a single remote-phonebook slot) |
 | `/contacts/<id>.xml` | YealinkIPPhoneDirectory — contacts for a specific phonebook |
 | `/health` | JSON status: `{"status":"ok","contacts":193,"last_sync_age_sec":42}` |
 | `/metrics` | Prometheus metrics: `yfps_build_info` (version), `yfps_degraded` (server-computed staleness flag), Fritzbox-side sync counters/age, phone-side fetch counters/age (when did the phone last pull?), contact and phonebook counts. See [Metrics & Alerting](https://otih.github.io/yealink-fritzbox-phonebook-sync/metrics/) for the reference, Prometheus scrape config and suggested alert rules |

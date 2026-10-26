@@ -713,6 +713,61 @@ def build_menu_xml(phonebooks: list[dict], server_base: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+def build_all_xml() -> str:
+    """
+    Build ONE combined YealinkIPPhoneDirectory from all served phonebooks.
+
+    Target: phones with a single remote-phonebook slot (parts of the T
+    series) where the menu drill-in is not usable — /all.xml gives them
+    one flat directory. Entries are re-parsed from the already-converted
+    per-phonebook XML (so normalization, dedup-scoping and labels are
+    exactly what /contacts/<id>.xml serves) and sorted alphabetically
+    (case-insensitive, umlaut-folding — same key as the converter).
+
+    Cross-phonebook duplicates are intentionally NOT merged: dedup is
+    scoped to one phonebook by design; this endpoint only concatenates.
+    """
+    entries: list[tuple[str, ET.Element]] = []
+    with state.lock:
+        contacts = dict(state.contacts)
+    for xml_str in contacts.values():
+        try:
+            root = ET.fromstring(xml_str)  # noqa: S314 — our own converted output
+        except ET.ParseError:
+            logger.warning("Skipping unparseable phonebook in /all.xml merge")
+            continue
+        for entry in root.iter():
+            if _strip_ns(entry.tag) == "DirectoryEntry":
+                name = ""
+                for child in entry:
+                    if _strip_ns(child.tag) == "Name":
+                        name = (child.text or "").strip()
+                        break
+                entries.append((_sort_key(name), entry))
+
+    lines = ['<?xml version="1.0" encoding="UTF-8"?>', "<YealinkIPPhoneDirectory>"]
+    for _key, entry in sorted(entries, key=lambda e: e[0]):
+        lines.append("  <DirectoryEntry>")
+        for child in entry:
+            tag = _strip_ns(child.tag)
+            if tag == "Name":
+                lines.append("    <Name>%s</Name>" % _escape_xml((child.text or "").strip()))
+            elif tag == "Telephone":
+                label = child.get("label")
+                if label:
+                    lines.append(
+                        '    <Telephone label="%s">%s</Telephone>'
+                        % (_escape_xml(label), _escape_xml((child.text or "").strip()))
+                    )
+                else:
+                    lines.append(
+                        "    <Telephone>%s</Telephone>" % _escape_xml((child.text or "").strip())
+                    )
+        lines.append("  </DirectoryEntry>")
+    lines.append("</YealinkIPPhoneDirectory>")
+    return "\n".join(lines) + "\n"
+
+
 # ---------------------------------------------------------------------------
 # Shared state (thread-safe)
 # ---------------------------------------------------------------------------
@@ -1072,6 +1127,11 @@ class PhonebookHandler(BaseHTTPRequestHandler):
             if not body:
                 body = "<YealinkIPPhoneDirectory><DirectoryEntry><Name>Not synced yet</Name></DirectoryEntry></YealinkIPPhoneDirectory>"
             self._serve(body)
+            self._record_phone_fetch()
+        elif self.path == "/all.xml":
+            # Combined flat directory — phones with a single remote-
+            # phonebook slot. Same auth/fetch tracking as the others.
+            self._serve(build_all_xml())
             self._record_phone_fetch()
         elif self.path.startswith("/contacts/") and self.path.endswith(".xml"):
             # Extract phonebook ID from path: /contacts/1.xml → 1
