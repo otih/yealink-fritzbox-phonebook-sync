@@ -990,6 +990,18 @@ def _placeholder_menu(server_base: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _prune_fetch_ips(ips: dict[str, float], limit: int = 10) -> dict[str, float]:
+    """Prune the per-IP fetch map to the `limit` most recent fetchers.
+
+    Called on every recorded fetch AND defensively by the /metrics
+    emitter — a map that was inflated externally (tests, restore) can
+    never leak unbounded entries into a scrape.
+    """
+    if len(ips) <= limit:
+        return ips
+    return dict(sorted(ips.items(), key=lambda kv: kv[1])[-limit:])
+
+
 class PhonebookHandler(BaseHTTPRequestHandler):
     # Yealink phones expect HTTP/1.1; BaseHTTPRequestHandler defaults to 1.0
     protocol_version = "HTTP/1.1"
@@ -1065,10 +1077,10 @@ class PhonebookHandler(BaseHTTPRequestHandler):
             state.last_phone_fetch = time.time()
             ip = self.client_address[0]
             state.phone_fetch_ips[ip] = time.time()
-            # Cardinality bound: keep only the 10 most recent fetchers
-            if len(state.phone_fetch_ips) > 10:
-                recent = sorted(state.phone_fetch_ips.items(), key=lambda kv: kv[1])[-10:]
-                state.phone_fetch_ips = dict(recent)
+            # Cardinality bound: prune eagerly on EVERY fetch so the map
+            # can never linger above the limit (the /metrics emitter also
+            # prunes defensively — see do_GET).
+            state.phone_fetch_ips = _prune_fetch_ips(state.phone_fetch_ips)
 
     def do_GET(self) -> None:
         # /health is always open (needed for Docker HEALTHCHECK, monitoring)
@@ -1162,7 +1174,9 @@ class PhonebookHandler(BaseHTTPRequestHandler):
                             )
                         )
                 # Per-IP phone-side fetch age — WHICH phone last pulled
-                # (multi-handset). Bounded to the 10 most recent fetchers.
+                # (multi-handset). Bounded to the 10 most recent fetchers
+                # (pruned defensively here, not only on fetch).
+                state.phone_fetch_ips = _prune_fetch_ips(state.phone_fetch_ips)
                 if state.phone_fetch_ips:
                     lines.append(
                         "# HELP yfps_phonebook_fetch_age_seconds_by_ip "
