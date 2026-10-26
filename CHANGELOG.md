@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Kubernetes manifest pinned a floating image:** `k8s.yaml` deployed
+  `:latest` — violating the project's own reproducibility rule (the
+  compose file pins a concrete version). It now pins the current release
+  (`0.10.1`), and a new CI image-pin gate fails the build if any shipped
+  manifest ever references `:latest` again.
+
+### Changed
+
+- **E2E coverage for `--check` and `SYNC_CACHE_DIR`:** the CI container
+  smoke test now exercises the diagnostic mode (must exit 1 cleanly
+  against a dead Fritzbox, never hang) and the persistent cache (a
+  hand-crafted snapshot mounted into a fresh container with the Fritzbox
+  dead must be served on `/menu.xml`).
+- **Coverage gate raised 45% → 60%:** the suite reached 62% with the
+  negative tests; the gate now ratchets so coverage can only go up.
+
 ## [0.10.1] - 2026-10-26
 
 ### Fixed
