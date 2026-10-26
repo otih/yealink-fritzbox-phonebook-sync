@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-26
+
+### Changed
+
+- **Auth-off-by-default is now a documented risk acceptance:** the
+  README access-control section states the consequence (any LAN device
+  can read the phonebook while auth is unset), links the threat model
+  with rationale and revisit conditions, and names the mitigations.
+  This closes the BSI CON.8.A5 gap (defaults must enable secure
+  operation) the honest way: by formal acceptance instead of silence.
+
+### Added
+
+- **Threat model** (`docs/threat-model.md`, CON.8.A21): STRIDE analysis
+  per component (Fritzbox fetch, HTTP endpoints, on-disk cache, supply
+  chain), asset/protection-need matrix, trust boundaries — plus the
+  first formal documentation of the accepted risks (auth off by
+  default, plaintext HTTP by default, credentials embedded in the
+  phone URL) with revisit conditions. Includes the OWASP pytm
+  evaluation (not adopted; full 114-entry threat list walked against
+  the model) and the log-integrity responsibility split (DE04).
+
+- **Release approval checklist in CONTRIBUTING** (OPS.1.1.6.A4): the
+  release PR author works through a formal precondition list before
+  opening the dev → main release — CI green, test expectations,
+  vulnerability gate, version-bump correctness, all four version pins,
+  docs sync, maintainer-only items (rulesets, Pages), and the
+  post-merge verification steps. CONTRIBUTING is now explicitly named
+  as the binding development guideline per CON.8.A11.
+
+- **Caller-ID source documentation:** the troubleshooting guide now
+  explains why the phone display never shows WHICH phonebook a matched
+  contact came from (firmware sees one remote-phonebook source), how
+  the phone's directory-source priority
+  (`directory_setting.lookup_call_in.priority` — a PHONE setting over
+  directory types) decides which name wins across source types, and
+  what to do when the same number exists in two Fritzbox phonebooks.
+
+- **Grafana dashboard (`grafana/phonebook-sync-dashboard.json`):**
+  importable dashboard covering all 13 exported metrics, grouped by
+  question — Health & Version (up, version, degraded, sync age,
+  success/failure rate), Phonebooks & Contacts (per-phonebook contact
+  counts to spot a broken upstream import), Phones (fetch rate, fetch
+  age per handset IP, last fetch timestamp), Security (rejected auth
+  attempts, rate-limited requests). Expects the documented
+  `yealink-phonebook-sync` scrape job name.
+
 ## [0.11.0] - 2026-10-26
 
 ### Added

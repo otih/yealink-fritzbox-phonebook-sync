@@ -38,3 +38,5 @@ contact source the Fritzbox supports works automatically.
 - **[CHANGELOG](https://github.com/otih/yealink-fritzbox-phonebook-sync/blob/main/CHANGELOG.md)** — release history
 
 <!-- trigger-pages-deploy: GitHub Pages source is now GitHub Actions; re-run docs workflow -->
+
+For the security architecture, documented risk acceptances and the STRIDE analysis per component, see the [Threat Model](threat-model.md).

@@ -60,7 +60,7 @@ curl -sO $BASE/.env.example && mv .env.example .env
 # Edit .env — set FB_USER, FB_PASSWORD, SYNC_SERVER_URL, SYNC_AUTH_USER, SYNC_AUTH_PASSWORD
 nano .env
 
-docker compose up -d          # pulls ghcr.io/otih/yealink-fritzbox-phonebook-sync:0.11.0
+docker compose up -d          # pulls ghcr.io/otih/yealink-fritzbox-phonebook-sync:0.12.0
 docker compose logs -f
 docker compose down           # stop (graceful, ~1-2s)
 ```
@@ -75,7 +75,7 @@ nano .env
 docker compose up -d
 ```
 
-The `docker-compose.yml` pins a concrete version by default (`0.11.0`) for reproducible deployments — switch to `latest` if you prefer automatic updates, or `build: .` to build from source.
+The `docker-compose.yml` pins a concrete version by default (`0.12.0`) for reproducible deployments — switch to `latest` if you prefer automatic updates, or `build: .` to build from source.
 
 **Testing unreleased changes:** the CI publishes a `:dev` image from the [`dev` integration branch](https://github.com/otih/yealink-fritzbox-phonebook-sync/tree/dev) on every push (same CVE gates as releases). To run a test host on the bleeding edge, point a copy of the compose file at it:
 
@@ -222,7 +222,12 @@ All configuration is via environment variables. CLI flags override env vars but 
 
 ## Access control (HTTP Basic Auth)
 
-By default the phonebook is served without authentication. To protect it, set `SYNC_AUTH_USER` and `SYNC_AUTH_PASSWORD` in your `.env`:
+By default the phonebook is served without authentication — a
+**documented risk acceptance for trusted home/SOHO LANs** (any LAN
+device can read the phonebook; the server logs a warning at startup).
+See the [threat model](https://otih.github.io/yealink-fritzbox-phonebook-sync/threat-model/)
+for rationale, revisit conditions and the available mitigations. To
+protect the phonebook, set `SYNC_AUTH_USER` and `SYNC_AUTH_PASSWORD` in your `.env`:
 
 ```bash
 SYNC_AUTH_USER=phonebook
@@ -268,7 +273,7 @@ Invalid values (port ranges, non-numeric phonebook IDs, non-positive refresh int
 | `/all.xml` | YealinkIPPhoneDirectory — ALL phonebooks merged into one flat, alphabetically sorted directory (for phones with a single remote-phonebook slot) |
 | `/contacts/<id>.xml` | YealinkIPPhoneDirectory — contacts for a specific phonebook |
 | `/health` | JSON status: `{"status":"ok","contacts":193,"last_sync_age_sec":42}` |
-| `/metrics` | Prometheus metrics: `yfps_build_info` (version), `yfps_degraded` (server-computed staleness flag), Fritzbox-side sync counters/age, phone-side fetch counters/age (when did the phone last pull?), contact and phonebook counts. See [Metrics & Alerting](https://otih.github.io/yealink-fritzbox-phonebook-sync/metrics/) for the reference, Prometheus scrape config and suggested alert rules |
+| `/metrics` | Prometheus metrics: `yfps_build_info` (version), `yfps_degraded` (server-computed staleness flag), Fritzbox-side sync counters/age, phone-side fetch counters/age (when did the phone last pull?), contact and phonebook counts. See [Metrics & Alerting](https://otih.github.io/yealink-fritzbox-phonebook-sync/metrics/) for the reference, Prometheus scrape config, suggested alert rules and the importable Grafana dashboard |
 
 `/health` and `/metrics` are served without authentication (operational data
 only, no contact details); all phonebook endpoints require HTTP Basic Auth

@@ -43,6 +43,23 @@ Alert when it exceeds ~2× the phone's own poll interval. With more than one
 handset, `yfps_phonebook_fetch_age_seconds_by_ip` tells you WHICH phone
 stopped polling — the unlabeled global is the aggregate over all handsets.
 
+## Grafana dashboard
+
+A ready-to-import dashboard ships in the repo:
+[`grafana/phonebook-sync-dashboard.json`](https://github.com/otih/yealink-fritzbox-phonebook-sync/blob/main/grafana/phonebook-sync-dashboard.json).
+Import via Dashboards → Import (select your Prometheus datasource; the
+dashboard expects the `yealink-phonebook-sync` job name from the scrape
+config below).
+
+Panels, grouped by question:
+
+- **Health & Version** — server up, running version (`yfps_build_info`),
+  sync state (`yfps_degraded`), Fritzbox sync age, sync success/failure rate
+- **Phonebooks & Contacts** — contacts per phonebook (spot a broken
+  upstream import at a glance), totals
+- **Phones** — fetch rate, fetch age **per handset IP**, last fetch timestamp
+- **Security** — rejected auth attempts, rate-limited requests
+
 ## Prometheus scrape config
 
 ```yaml
