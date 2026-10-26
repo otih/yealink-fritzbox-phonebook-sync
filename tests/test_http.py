@@ -334,6 +334,10 @@ class TestPerIpFetchMetrics:
 
     def test_per_ip_map_bounded_to_10(self, server):
         base, _ = server
+        # Fresh limiter: earlier suite tests exhaust the per-IP budget
+        # (module-global state) — the fetch here must actually happen.
+        yfps.rate_limiter = yfps._RateLimiter()
+        yfps.auth_user = ""
         # 15 different fake IPs recorded; one more fetch triggers the
         # bound — the map must stay <= 10 entries
         with yfps.state.lock:
@@ -341,3 +345,45 @@ class TestPerIpFetchMetrics:
         _get(base + "/menu.xml")  # records 127.0.0.1 -> bound applies
         with yfps.state.lock:
             assert len(yfps.state.phone_fetch_ips) <= 10
+
+
+class TestAllXmlEndpoint:
+    """/all.xml: combined flat directory for single-slot phones.
+    Positive: merges + serves. Negative: auth-protected like every
+    phonebook endpoint, counts as a phone fetch."""
+
+    def test_all_xml_served_without_auth_when_auth_disabled(self, server):
+        base, _ = server
+        yfps.auth_user = ""
+        with yfps.state.lock:
+            yfps.state.contacts[3] = (
+                '<?xml version="1.0" encoding="UTF-8"?>\n<YealinkIPPhoneDirectory>\n'
+                "  <DirectoryEntry><Name>X</Name><Telephone>1</Telephone></DirectoryEntry>\n"
+                "</YealinkIPPhoneDirectory>"
+            )
+        status, body = _get(base + "/all.xml")
+        assert status == 200
+        assert "<Name>X</Name>" in body
+        assert body.startswith('<?xml version="1.0" encoding="UTF-8"?>')
+
+    def test_all_xml_rejected_without_auth(self, server):
+        base, _ = server
+        # Fresh limiter: earlier suite tests may have exhausted the
+        # per-IP budget (module-global state) — we assert 401, not 429.
+        yfps.rate_limiter = yfps._RateLimiter()
+        yfps.auth_user = "u"
+        yfps.auth_pass = "p"
+        status, _ = _get(base + "/all.xml")
+        assert status == 401
+        yfps.auth_user = ""
+        yfps.auth_pass = ""
+
+    def test_all_xml_empty_state_serves_empty_directory(self, server):
+        base, _ = server
+        yfps.auth_user = ""
+        with yfps.state.lock:
+            yfps.state.contacts = {}
+        status, body = _get(base + "/all.xml")
+        assert status == 200
+        assert "<DirectoryEntry>" not in body
+        assert "<YealinkIPPhoneDirectory>" in body

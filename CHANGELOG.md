@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`/all.xml` — combined flat directory:** all phonebooks merged into
+  one YealinkIPPhoneDirectory, alphabetically sorted across phonebook
+  boundaries. For phones with a single remote-phonebook slot where the
+  menu drill-in is not usable. Same auth and fetch tracking as the other
+  phonebook endpoints; cross-phonebook duplicates stay separate (dedup
+  remains scoped to one phonebook).
+
 ### Changed
 
 - **One PR per change** (CONTRIBUTING): every feature, fix, docs or CI
