@@ -906,6 +906,16 @@ class PhonebookHandler(BaseHTTPRequestHandler):
         self.end_headers()
         return False
 
+    @staticmethod
+    def _prom_escape_label(value: str) -> str:
+        """Escape a string for use inside a Prometheus label value.
+
+        Only backslashes, double quotes and newlines need escaping (Prometheus
+        exposition format); phonebook names with quotes must not break the
+        metric line.
+        """
+        return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
     def _record_phone_fetch(self) -> None:
         """Track phone-side activity: a phonebook was just served to a phone.
 
@@ -993,6 +1003,21 @@ class PhonebookHandler(BaseHTTPRequestHandler):
                     "# TYPE yfps_phonebooks_total gauge",
                     "yfps_phonebooks_total %d" % len(state.pb_meta),
                 ]
+                # Per-phonebook contact count — a shrinking source (e.g.
+                # broken Google import into the Fritzbox) is visible per
+                # phonebook, not just in the global sum.
+                if state.pb_meta:
+                    lines.append("# HELP yfps_phonebook_contacts Contact count per phonebook")
+                    lines.append("# TYPE yfps_phonebook_contacts gauge")
+                    for pb in state.pb_meta:
+                        lines.append(
+                            'yfps_phonebook_contacts{id="%d",name="%s"} %d'
+                            % (
+                                pb["id"],
+                                self._prom_escape_label(pb["name"]),
+                                pb["count"],
+                            )
+                        )
             self._serve("\n".join(lines) + "\n", content_type="text/plain; version=0.0.4")
             return
 

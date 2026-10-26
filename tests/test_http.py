@@ -269,3 +269,39 @@ class TestRouting:
             ln for ln in body.splitlines() if ln.startswith("yfps_phonebook_fetch_age_seconds")
         ][0]
         assert int(age_line.split()[-1]) == 0  # just fetched
+
+
+class TestPerPhonebookMetrics:
+    """yfps_phonebook_contacts{id=..., name=...}: contact count per
+    phonebook — a shrinking source (e.g. broken Google import into the
+    Fritzbox) becomes visible per phonebook, not just in the global sum."""
+
+    def test_per_phonebook_gauge_emitted(self, server):
+        base, st = server
+        with st.lock:
+            st.pb_meta = [
+                {"id": 1, "name": "Work", "count": 193},
+                {"id": 2, "name": "Privat", "count": 42},
+            ]
+        status, body = _get(base + "/metrics")
+        assert status == 200
+        assert "# TYPE yfps_phonebook_contacts gauge" in body
+        assert 'yfps_phonebook_contacts{id="1",name="Work"} 193' in body
+        assert 'yfps_phonebook_contacts{id="2",name="Privat"} 42' in body
+
+    def test_empty_state_emits_no_gauge_lines(self, server):
+        base, st = server
+        with st.lock:
+            st.pb_meta = []
+        status, body = _get(base + "/metrics")
+        assert status == 200
+        assert "yfps_phonebook_contacts{" not in body
+
+    def test_phonebook_name_escaped_in_label(self, server):
+        base, st = server
+        with st.lock:
+            st.pb_meta = [{"id": 3, "name": 'Book "quoted" \\ slash', "count": 1}]
+        status, body = _get(base + "/metrics")
+        assert status == 200
+        # Backslash and quote must be escaped per Prometheus label rules
+        assert 'yfps_phonebook_contacts{id="3",name="Book \\"quoted\\" \\\\ slash"} 1' in body
