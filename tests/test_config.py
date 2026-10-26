@@ -85,3 +85,26 @@ class TestLogLevelParsing:
 
     def test_empty_defaults_to_info(self):
         assert yfps._parse_log_level("") == "INFO"
+
+
+# ---------------------------------------------------------------------------
+# Tests: _parse_bool (SYNC_DEDUP_CONTACTS fail-fast validation)
+# ---------------------------------------------------------------------------
+
+
+class TestParseBool:
+    def test_true_values(self):
+        for v in ("1", "true", "TRUE", "True", "yes", "on"):
+            assert yfps._parse_bool(v) is True
+
+    def test_false_and_empty(self):
+        for v in ("", "0", "false", "FALSE", "no", "off"):
+            assert yfps._parse_bool(v) is False
+
+    def test_invalid_raises(self):
+        # A typo like 'treu' or 'ja' must abort startup, not silently
+        # disable the feature — same fail-fast philosophy as log levels.
+        with pytest.raises(ValueError, match="SYNC_DEDUP_CONTACTS"):
+            yfps._parse_bool("treu")
+        with pytest.raises(ValueError, match="SYNC_DEDUP_CONTACTS"):
+            yfps._parse_bool("ja")

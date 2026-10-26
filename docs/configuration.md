@@ -72,6 +72,11 @@ multiple sources into one phonebook.
 | off (default) | Contacts pass through exactly as the Fritzbox delivers them (pre-0.8.0 behavior) |
 | on | Same-name contacts in one phonebook merge into a single entry; duplicate numbers collapse |
 
+Accepted values: `1`/`true`/`yes`/`on` enable it, `0`/`false`/`no`/`off`
+or empty disable it. **Anything else aborts startup with a clear error**
+(a typo must not silently disable the feature) — same fail-fast
+philosophy as the other settings.
+
 In both settings: contacts are always sorted alphabetically
 (case-insensitive, umlaut-aware), and the same name in two different
 phonebooks always stays separate (each phonebook is its own menu entry).
@@ -87,8 +92,13 @@ phonebooks always stays separate (each phonebook is its own menu entry).
 
 Invalid configuration fails fast at startup with a clear error: port
 ranges (1–65535), non-numeric phonebook IDs, non-positive refresh
-intervals, unknown log levels, and malformed IP allowlists are all
-rejected before the server starts listening.
+intervals, unknown log levels, malformed IP allowlists, and unrecognized
+`SYNC_DEDUP_CONTACTS` values are all rejected before the server starts
+listening.
+
+`python3 yealink-fritzbox-phonebook-sync.py --version` prints the app
+version and exits — handy in support cases (same source as the startup
+banner and `yfps_build_info`).
 
 ## Diagnostic mode (`--check`)
 

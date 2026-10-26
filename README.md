@@ -246,7 +246,7 @@ Failed Basic-Auth attempts are rate-limited per client IP: after 5 failures with
 
 ### Fail-fast configuration validation
 
-Invalid values (port ranges, non-numeric phonebook IDs, non-positive refresh intervals, unknown log levels, malformed allowlists) are rejected at startup with a clear error message instead of failing at runtime.
+Invalid values (port ranges, non-numeric phonebook IDs, non-positive refresh intervals, unknown log levels, malformed allowlists, unrecognized `SYNC_DEDUP_CONTACTS` values) are rejected at startup with a clear error message instead of failing at runtime. `--version` prints the app version and exits.
 
 ## HTTP endpoints
 
