@@ -59,6 +59,23 @@ at the `SYNC_CACHE_DIR` path, e.g.:
       - ./phonebook-cache:/data
 ```
 
+## Contact dedup (optional)
+
+Set `SYNC_DEDUP_CONTACTS` (or pass `--dedup-contacts`) to merge contacts
+with the same name within one phonebook into a single entry — numbers are
+combined, duplicate numbers collapse to one `<Telephone>` (first non-empty
+label wins). Useful when the Fritzbox aggregates the same person from
+multiple sources into one phonebook.
+
+| Setting | Behavior |
+|---------|----------|
+| off (default) | Contacts pass through exactly as the Fritzbox delivers them (pre-0.8.0 behavior) |
+| on | Same-name contacts in one phonebook merge into a single entry; duplicate numbers collapse |
+
+In both settings: contacts are always sorted alphabetically
+(case-insensitive, umlaut-aware), and the same name in two different
+phonebooks always stays separate (each phonebook is its own menu entry).
+
 ## Logging
 
 | Variable | Default | Description |

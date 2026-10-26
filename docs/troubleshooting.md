@@ -102,10 +102,12 @@ now also survives container restarts.
 
 - **Internal numbers are gone** (`**9`, `**600`): by design — they are
   not dialable from the PSTN side and are filtered out.
-- **Duplicate contacts within one phonebook:** merged automatically since
-  the sort/dedup feature — same-name entries combine into one with all
-  their numbers. The same name in two different phonebooks intentionally
-  stays separate (each phonebook is its own menu entry).
+- **Duplicate contacts within one phonebook:** enable `SYNC_DEDUP_CONTACTS`
+  (or `--dedup-contacts`) — same-name entries then combine into one with
+  all their numbers. With dedup disabled (the default) contacts pass
+  through exactly as the Fritzbox delivers them. The same name in two
+  different phonebooks intentionally stays separate (each phonebook is
+  its own menu entry).
 - **A number looks different than in the Fritzbox:** the server strips
   formatting characters and the German `(0)` trunk prefix for reliable
   Caller-ID matching (`+49 (0)170 123456` → `+49170123456`).

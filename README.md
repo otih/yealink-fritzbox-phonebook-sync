@@ -202,6 +202,7 @@ All configuration is via environment variables. CLI flags override env vars but 
 | `SYNC_AUTH_PASSWORD` | *(empty)* | HTTP Basic Auth password |
 | `SYNC_ALLOWED_IPS` | *(empty)* | Optional allowlist: comma-separated IPs or CIDR ranges; empty = allow all |
 | `SYNC_CACHE_DIR` | *(empty)* | Optional persistent phonebook cache directory — bridges restarts while the Fritzbox is unreachable; empty = in-memory only |
+| `SYNC_DEDUP_CONTACTS` | *(off)* | Optional: merge same-name contacts within one phonebook into a single entry and collapse duplicate numbers. Off = contacts pass through as the Fritzbox delivers them (pre-0.8.0 behavior). Sorting is always on |
 | `SYNC_LOG_LEVEL` | `INFO` | Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL |
 | `SYNC_LOG_FORMAT` | `text` | Log format: `text` or `json` (for log aggregation) |
 
@@ -270,7 +271,7 @@ when configured.
    - Multiple `<Telephone>` elements inside each entry if the person has several numbers
    - Each `<Telephone>` gets a `label` attribute mapped from the Fritzbox number type (Mobil, Festnetz, Arbeit, Fax, Sonstige)
    - Internal Fritzbox numbers (`**9`, `**600`, etc.) are filtered out
-   - Contacts are sorted alphabetically (case-insensitive, umlaut-aware); contacts with the same name in one phonebook are merged into a single entry — the same name in different phonebooks stays separate
+   - Contacts are sorted alphabetically (case-insensitive, umlaut-aware). Optionally, `SYNC_DEDUP_CONTACTS` merges contacts with the same name within one phonebook into a single entry — the same name in different phonebooks always stays separate
    - The phonebook name is extracted from the Fritzbox XML and used as the menu label
 5. **Menu** — builds a `YealinkIPPhoneMenu` listing all non-empty phonebooks as selectable `<MenuItem>` entries, each showing the phonebook name and contact count (e.g. "Work (193)"). Each item links to its own `/contacts/<id>.xml` endpoint.
 6. **Serve** — `/menu.xml` and `/contacts/<id>.xml` are served over plain HTTP (HTTP/1.1 with `Connection: close`).

@@ -285,41 +285,80 @@ class TestSortContacts:
 
 
 class TestDedupContacts:
-    def test_duplicate_contact_merged(self):
+    """Contact dedup is OPT-IN since v0.9.0: enabled via SYNC_DEDUP_CONTACTS /
+    --dedup-contacts; default off reproduces the pre-0.8.0 Fritzbox delivery
+    order semantics (only sorting remains always-on)."""
+
+    def test_duplicate_contact_merged_when_enabled(self):
         # Same name twice → one DirectoryEntry with both numbers
-        _, contacts, count = yfps.convert_single_phonebook(DUPLICATE_CONTACT_PHONEBOOK)
+        _, contacts, count = yfps.convert_single_phonebook(
+            DUPLICATE_CONTACT_PHONEBOOK, dedup_contacts=True
+        )
         assert count == 2  # Dup Name (merged) + Other Name
         assert contacts.count("Dup Name") == 1
         # merged entry carries both numbers (normalized form)
         assert "+491707770001" in contacts
         assert "+49897770002" in contacts
 
-    def test_duplicate_contact_numbers_combined(self):
-        # The merged entry lists both numbers; 'Other Name' keeps its one
-        _, contacts, _ = yfps.convert_single_phonebook(DUPLICATE_CONTACT_PHONEBOOK)
+    def test_duplicate_contact_numbers_combined_when_enabled(self):
+        _, contacts, _ = yfps.convert_single_phonebook(
+            DUPLICATE_CONTACT_PHONEBOOK, dedup_contacts=True
+        )
         dup_block = contacts[contacts.find("Dup Name") : contacts.find("Other Name")]
         assert dup_block.count("<Telephone") == 2
 
-    def test_duplicate_number_within_contact_deduped(self):
-        # Same number twice in one contact (different types) → one element
+    def test_duplicate_contact_kept_separate_by_default(self):
+        # Default OFF: same-name contacts stay separate entries
+        _, contacts, count = yfps.convert_single_phonebook(DUPLICATE_CONTACT_PHONEBOOK)
+        assert count == 3  # Dup Name, Other Name, Dup Name again
+        assert contacts.count("Dup Name") == 2
+        assert "+491707770001" in contacts
+        assert "+49897770002" in contacts
+
+    def test_duplicate_number_within_contact_kept_by_default(self):
+        # Default OFF: the same number twice in ONE contact stays twice —
+        # exact pre-0.8.0 behavior
         _, contacts, count = yfps.convert_single_phonebook(DUPLICATE_NUMBER_PHONEBOOK)
+        assert count == 1
+        assert contacts.count("<Telephone") == 2  # both occurrences kept
+        assert contacts.count("+491708880001") == 2
+
+    def test_duplicate_number_within_contact_deduped_when_enabled(self):
+        # Same number twice in one contact (different types) → one element
+        _, contacts, count = yfps.convert_single_phonebook(
+            DUPLICATE_NUMBER_PHONEBOOK, dedup_contacts=True
+        )
         assert count == 1
         assert contacts.count("<Telephone") == 1
         assert contacts.count("+491708880001") == 1
 
-    def test_label_resolved_on_duplicate_number(self):
+    def test_label_resolved_on_duplicate_number_when_enabled(self):
         # First occurrence unlabeled, second labeled 'mobile' → label wins
-        _, contacts, _ = yfps.convert_single_phonebook(LABEL_RESOLVED_ON_DUP)
+        _, contacts, _ = yfps.convert_single_phonebook(LABEL_RESOLVED_ON_DUP, dedup_contacts=True)
         assert contacts.count("<Telephone") == 1
         assert '<Telephone label="Mobil">+491709990001</Telephone>' in contacts
 
-    def test_dedup_scoped_to_single_phonebook(self):
+    def test_unlabeled_duplicate_numbers_kept_when_disabled(self):
+        # Default OFF: no label resolution happens — both raw entries stay
+        _, contacts, _ = yfps.convert_single_phonebook(LABEL_RESOLVED_ON_DUP)
+        assert contacts.count("<Telephone") == 2
+        assert '<Telephone label="Mobil">+491709990001</Telephone>' in contacts
+
+    def test_dedup_scoped_to_single_phonebook_when_enabled(self):
         # Same contact name in TWO <phonebook> elements → NOT merged
-        _, contacts, count = yfps.convert_single_phonebook(TWO_PHONEBOOKS_SAME_CONTACT)
+        _, contacts, count = yfps.convert_single_phonebook(
+            TWO_PHONEBOOKS_SAME_CONTACT, dedup_contacts=True
+        )
         assert count == 2
         assert contacts.count("Cross Name") == 2
         assert "+491706660001" in contacts
         assert "+49896660002" in contacts
+
+    def test_sorting_stays_active_when_dedup_disabled(self):
+        # Sorting is always on, independent of the dedup setting
+        _, contacts, count = yfps.convert_single_phonebook(SORT_PHONEBOOK)
+        assert count == 4
+        assert contacts.find("alfred example") < contacts.find("Zorro Example")
 
 
 # ---------------------------------------------------------------------------
