@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Release approval checklist in CONTRIBUTING** (OPS.1.1.6.A4): the
+  release PR author works through a formal precondition list before
+  opening the dev → main release — CI green, test expectations,
+  vulnerability gate, version-bump correctness, all four version pins,
+  docs sync, maintainer-only items (rulesets, Pages), and the
+  post-merge verification steps. CONTRIBUTING is now explicitly named
+  as the binding development guideline per CON.8.A11.
+
+### Added
+
 - **Threat model** (`docs/threat-model.md`, CON.8.A21): STRIDE analysis
   per component (Fritzbox fetch, HTTP endpoints, on-disk cache, supply
   chain), asset/protection-need matrix, trust boundaries — plus the
