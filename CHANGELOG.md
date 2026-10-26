@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Integer env variables fail fast with the variable name:** garbage
+  values like `FB_PORT=abc` crashed argparse construction with a raw
+  Python traceback that never named the setting. They now abort with
+  the same clean `Configuration error: Invalid FB_PORT value 'abc'
+  (must be an integer)` as every other setting (`FB_PORT`,
+  `SYNC_LISTEN_PORT`, `SYNC_REFRESH_INTERVAL`).
+
+### Added
+
+- **Negative-test suite (`tests/test_negative_config.py`):** every
+  environment variable gets a garbage-value test — exit code 1 AND an
+  error naming the variable, never a bare traceback. Codified in
+  CONTRIBUTING.md as a mandatory practice (config garbage, HTTP edge
+  cases, XML data garbage).
+
 ## [0.10.0] - 2026-10-26
 
 ### Added
