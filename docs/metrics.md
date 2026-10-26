@@ -14,6 +14,8 @@ otherwise) and whether the Fritzbox sync is healthy.
 |--------|------|---------|
 | `yfps_build_info{version="x.y.z"}` | gauge | Build/version info, constant `1`. The `version` label carries the app version — use it to see which version a running instance reports (matches the startup log line). |
 | `yfps_degraded` | gauge | `1` if the last successful Fritzbox sync is older than 3× the refresh interval (or never synced), `0` otherwise. Server-computed so you don't have to replicate the threshold in PromQL. `/health` stays `200/ok` in this state — restarting the server would not help, it would even lose the last-known-good cache. |
+| `yfps_auth_failures_total` | counter | Number of rejected HTTP Basic-Auth attempts since process start. A value > 0 on a quiet network deserves a look at the logs — someone is probing credentials. |
+| `yfps_auth_rate_limited_total` | counter | Number of requests blocked by the per-IP rate limiter (HTTP 429). Each increment means one IP exceeded 5 failed attempts within 60 s — almost certainly brute force. |
 | `yfps_sync_success_total` | counter | Number of successful sync cycles since process start. |
 | `yfps_sync_failure_total` | counter | Number of failed sync cycles since process start. |
 | `yfps_sync_last_timestamp_seconds` | gauge | Unix timestamp of the last successful sync (`0` = never synced). |
@@ -118,6 +120,21 @@ groups:
             No phonebook download by any phone for more than 2 hours
             while the server is up. Check the phone's remote phonebook
             URL and its polling interval setting.
+
+      # Security: brute-force attempts against the phonebook HTTP endpoint.
+      # auth_failures counts rejected credentials, auth_rate_limited counts
+      # requests dropped after an IP exceeded the failure limit.
+      - alert: PhonebookAuthBruteForce
+        expr: increase(yfps_auth_failures_total[1h]) > 10 or yfps_auth_rate_limited_total > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Brute-force attempts against the phonebook endpoint"
+          description: >-
+            More than 10 rejected Basic-Auth attempts in the last hour or
+            at least one IP hit the rate limit (429). Check the server logs
+            for the source IPs and verify your auth credentials are strong.
 
       # Availability: the health endpoint is scraped implicitly by these
       # metrics — if the target is down, Prometheus marks it DOWN.
