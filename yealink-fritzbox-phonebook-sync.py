@@ -1109,6 +1109,66 @@ def sync_loop(
 
 
 # ---------------------------------------------------------------------------
+# Diagnostic mode (--check)
+# ---------------------------------------------------------------------------
+
+
+def _run_check(client: FritzboxClient, phonebook_id_arg: str) -> int:
+    """One-shot connectivity + conversion check; returns an exit code.
+
+    Connects to the Fritzbox, resolves (or validates the configured)
+    phonebook IDs, converts every phonebook and prints a summary.
+    Exit 0 = the server would serve data; exit 1 = it would not (with
+    the reason printed). Never starts the HTTP server.
+    """
+    try:
+        ids = client.get_phonebook_ids()
+    except Exception as exc:
+        print("FAIL: cannot reach the Fritzbox: %s" % exc)
+        print(
+            "Hints: check FB_HOST/FB_PORT (TR-064 port 49000), FB_USER/FB_PASSWORD,"
+            " and that TR-064 access is enabled on the Fritzbox."
+        )
+        return 1
+
+    print("Phonebook IDs on the Fritzbox: %s" % ", ".join(str(i) for i in ids))
+
+    if phonebook_id_arg:
+        configured = [int(i) for i in phonebook_id_arg.split(",")]
+        unknown = [i for i in configured if i not in ids]
+        if unknown:
+            print(
+                "FAIL: configured phonebook ID(s) %s not in the Fritzbox phonebook list %s"
+                % (unknown, ids)
+            )
+            return 1
+        check_ids = configured
+    else:
+        check_ids = ids
+
+    exit_code = 0
+    for pid in check_ids:
+        try:
+            raw = client.fetch_phonebook(pid)
+            name, _xml, count = convert_single_phonebook(raw)
+            if count:
+                print("OK: phonebook %d '%s': %d contact(s)" % (pid, name, count))
+            else:
+                print(
+                    "WARN: phonebook %d '%s': 0 usable contacts "
+                    "(only internal numbers or empty)" % (pid, name)
+                )
+        except Exception as exc:
+            print("FAIL: cannot fetch/convert phonebook %d: %s" % (pid, exc))
+            exit_code = 1
+    if exit_code:
+        print("Result: FAIL — see messages above.")
+    else:
+        print("Result: OK — the server can serve this configuration.")
+    return exit_code
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -1171,6 +1231,13 @@ def main() -> None:
         help="Directory for the persistent phonebook cache (empty = disabled, default). "
         "Bridges restarts while the Fritzbox is unreachable.",
     )
+    p.add_argument(
+        "--check",
+        action="store_true",
+        default=False,
+        help="Diagnostic mode: connect to the Fritzbox once, list phonebook IDs and "
+        "contact counts, then exit (0 = OK, 1 = problem found). Never starts the server.",
+    )
     args = p.parse_args()
 
     try:
@@ -1208,6 +1275,13 @@ def main() -> None:
         logger.error("Fritzbox user and password required.")
         logger.error("Set via --fritzbox-user/--fritzbox-password or FB_USER/FB_PASSWORD env vars.")
         sys.exit(1)
+
+    # Diagnostic mode: verify the Fritzbox connection and conversion, then exit.
+    if args.check:
+        client = FritzboxClient(
+            args.fritzbox_host, args.fritzbox_port, args.fritzbox_user, args.fritzbox_password
+        )
+        sys.exit(_run_check(client, args.phonebook_id))
 
     if not args.server_url:
         args.server_url = "http://0.0.0.0:%d" % args.listen_port

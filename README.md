@@ -142,19 +142,33 @@ Fritzbox web UI → **System → Fritzbox-Benutzer** (*FRITZ!Box Users*):
 
 ### Find your phonebook ID
 
-The Fritzbox assigns integer IDs to each phonebook. To find out which IDs exist:
+The Fritzbox assigns integer IDs to each phonebook. The fastest way to see which IDs exist and whether they convert cleanly:
 
 ```bash
-python3 -c "
-import importlib.util
-spec = importlib.util.spec_from_file_location('m', 'yealink-fritzbox-phonebook-sync.py')
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
-c = m.FritzboxClient('fritz.box', 49000, 'YOUR_USER', 'YOUR_PASSWORD')
-print('Phonebook IDs:', c.get_phonebook_ids())
-"
+python3 yealink-fritzbox-phonebook-sync.py --check \
+  --fritzbox-user YOUR_USER --fritzbox-password YOUR_PASSWORD
 ```
 
-Typically ID `0` is the default "Telefonbuch" and higher IDs are Google-imported phonebooks.
+Output (exit code 0 = OK, 1 = problem found):
+
+```
+Phonebook IDs on the Fritzbox: 0, 1, 2
+OK: phonebook 0 'Telefonbuch': 42 contact(s)
+WARN: phonebook 1 'Google Contacts': 0 usable contacts (only internal numbers or empty)
+OK: phonebook 2 'Work': 193 contact(s)
+Result: OK — the server can serve this configuration.
+```
+
+Typically ID `0` is the default "Telefonbuch" and higher IDs are Google-imported phonebooks. Phonebooks with only internal numbers (`**9`, `**600`) are normal and hidden from the menu.
+
+In Docker (WORKDIR is `/app`):
+
+```bash
+docker run --rm --network host \
+  -e FB_HOST=fritz.box -e FB_USER=YOUR_USER -e FB_PASSWORD=YOUR_PASSWORD \
+  --entrypoint python3 ghcr.io/otih/yealink-fritzbox-phonebook-sync:latest \
+  /app/yealink-fritzbox-phonebook-sync.py --check
+```
 
 ### Phonebook selection
 

@@ -40,6 +40,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   directory fails fast. Empty/unset keeps the previous in-memory-only
   behavior — fully backwards compatible.
 
+- **Diagnostic mode `--check`:** one-shot first-setup verification —
+  connects to the Fritzbox, lists the phonebook IDs (or validates the
+  configured ones), converts every phonebook and prints name + usable
+  contact count per ID, then exits 0 (OK) or 1 (with hints what to
+  check). Never starts the HTTP server. Replaces the README's former
+  copy-paste Python snippet for finding phonebook IDs.
+
 ## [0.7.0] - 2026-10-25
 
 ### Added
