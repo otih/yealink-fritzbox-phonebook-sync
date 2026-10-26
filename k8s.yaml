@@ -52,7 +52,7 @@ spec:
           # Pinned release version — same reproducibility rule as
           # docker-compose.yml (:latest never ships in manifests).
           # CI enforces this (see the image-pin gate in ci.yml).
-          image: ghcr.io/otih/yealink-fritzbox-phonebook-sync:0.10.1
+          image: ghcr.io/otih/yealink-fritzbox-phonebook-sync:0.10.2
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
