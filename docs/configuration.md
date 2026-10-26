@@ -72,3 +72,17 @@ Invalid configuration fails fast at startup with a clear error: port
 ranges (1–65535), non-numeric phonebook IDs, non-positive refresh
 intervals, unknown log levels, and malformed IP allowlists are all
 rejected before the server starts listening.
+
+## Diagnostic mode (`--check`)
+
+`--check` (CLI only) answers "would this configuration serve a phonebook?"
+in one shot: it connects to the Fritzbox, resolves or validates the
+configured phonebook IDs, converts every phonebook and prints a summary
+with contact counts — then exits with code 0 (OK) or 1 (problem found,
+with hints). It never starts the HTTP server, so it is safe to run at
+any time:
+
+```bash
+python3 yealink-fritzbox-phonebook-sync.py --check \
+  --fritzbox-user YOUR_USER --fritzbox-password YOUR_PASSWORD
+```
