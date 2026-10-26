@@ -2,10 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
     tags: ['v*']
   pull_request:
-    branches: [main]
+    branches: [main, dev]
   # Manual "rebuild & publish now" — runs the full pipeline on main.
   workflow_dispatch:
   # Called by the weekly rebuild workflow when the base image drifted:
@@ -103,6 +103,11 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # type=ref,event=branch tags pushes with the branch name:
+          # main pushes keep publishing :main, dev pushes publish :dev
+          # (the bleeding-edge image, full CVE gate, for test hosts).
+          # :latest stays exclusive to the default branch (main) — dev
+          # must never leak into a "just pull latest" deployment.
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
