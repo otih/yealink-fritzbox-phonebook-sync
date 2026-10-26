@@ -60,7 +60,7 @@ curl -sO $BASE/.env.example && mv .env.example .env
 # Edit .env — set FB_USER, FB_PASSWORD, SYNC_SERVER_URL, SYNC_AUTH_USER, SYNC_AUTH_PASSWORD
 nano .env
 
-docker compose up -d          # pulls ghcr.io/otih/yealink-fritzbox-phonebook-sync:0.10.2
+docker compose up -d          # pulls ghcr.io/otih/yealink-fritzbox-phonebook-sync:0.11.0
 docker compose logs -f
 docker compose down           # stop (graceful, ~1-2s)
 ```
@@ -75,7 +75,7 @@ nano .env
 docker compose up -d
 ```
 
-The `docker-compose.yml` pins a concrete version by default (`0.10.2`) for reproducible deployments — switch to `latest` if you prefer automatic updates, or `build: .` to build from source.
+The `docker-compose.yml` pins a concrete version by default (`0.11.0`) for reproducible deployments — switch to `latest` if you prefer automatic updates, or `build: .` to build from source.
 
 **Testing unreleased changes:** the CI publishes a `:dev` image from the [`dev` integration branch](https://github.com/otih/yealink-fritzbox-phonebook-sync/tree/dev) on every push (same CVE gates as releases). To run a test host on the bleeding edge, point a copy of the compose file at it:
 
@@ -127,6 +127,8 @@ On the Yealink web UI → **Directory → Remote Phone Book**:
 | Display Name | `Fritzbox` |
 
 Click **Confirm**. The phone downloads the phonebook immediately and caches it locally.
+
+**Single-slot phones:** if your model supports only one remote phonebook (no menu drill-in), point it at `http://<server-ip>:8080/all.xml` instead — it serves all phonebooks as one flat, alphabetically sorted directory.
 
 If it does not work, see the [Troubleshooting guide](https://otih.github.io/yealink-fritzbox-phonebook-sync/troubleshooting/) — symptom-first, from "phone shows nothing" to "stale data" and auth errors.
 
@@ -211,6 +213,8 @@ All configuration is via environment variables. CLI flags override env vars but 
 | `SYNC_ALLOWED_IPS` | *(empty)* | Optional allowlist: comma-separated IPs or CIDR ranges; empty = allow all |
 | `SYNC_CACHE_DIR` | *(empty)* | Optional persistent phonebook cache directory — bridges restarts while the Fritzbox is unreachable; empty = in-memory only |
 | `SYNC_DEDUP_CONTACTS` | *(off)* | Optional: merge same-name contacts within one phonebook into a single entry and collapse duplicate numbers. Off = contacts pass through as the Fritzbox delivers them (pre-0.8.0 behavior). Sorting is always on |
+| `SYNC_TLS_CERT` | *(empty)* | Optional TLS: PEM certificate path — set together with `SYNC_TLS_KEY` to serve HTTPS; empty = plain HTTP. The phone must trust the cert (see docs) |
+| `SYNC_TLS_KEY` | *(empty)* | Optional TLS: PEM private key path (set together with `SYNC_TLS_CERT`) |
 | `SYNC_LOG_LEVEL` | `INFO` | Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL |
 | `SYNC_LOG_FORMAT` | `text` | Log format: `text` or `json` (for log aggregation) |
 
@@ -261,6 +265,7 @@ Invalid values (port ranges, non-numeric phonebook IDs, non-positive refresh int
 | Path | Content |
 |------|---------|
 | `/menu.xml` | YealinkIPPhoneMenu — lists all phonebooks as selectable entries |
+| `/all.xml` | YealinkIPPhoneDirectory — ALL phonebooks merged into one flat, alphabetically sorted directory (for phones with a single remote-phonebook slot) |
 | `/contacts/<id>.xml` | YealinkIPPhoneDirectory — contacts for a specific phonebook |
 | `/health` | JSON status: `{"status":"ok","contacts":193,"last_sync_age_sec":42}` |
 | `/metrics` | Prometheus metrics: `yfps_build_info` (version), `yfps_degraded` (server-computed staleness flag), Fritzbox-side sync counters/age, phone-side fetch counters/age (when did the phone last pull?), contact and phonebook counts. See [Metrics & Alerting](https://otih.github.io/yealink-fritzbox-phonebook-sync/metrics/) for the reference, Prometheus scrape config and suggested alert rules |

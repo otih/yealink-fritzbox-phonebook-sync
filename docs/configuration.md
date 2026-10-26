@@ -87,6 +87,72 @@ In both settings: contacts are always sorted alphabetically
 (case-insensitive, umlaut-aware), and the same name in two different
 phonebooks always stays separate (each phonebook is its own menu entry).
 
+## TLS (optional)
+
+Set BOTH `SYNC_TLS_CERT` and `SYNC_TLS_KEY` to serve the phonebook over
+HTTPS instead of plain HTTP — strictly opt-in; unset (default) keeps the
+unchanged plain-HTTP behavior.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SYNC_TLS_CERT` | *(empty)* | Path to the PEM certificate file |
+| `SYNC_TLS_KEY` | *(empty)* | Path to the PEM private key file |
+
+One without the other, or a missing file, aborts startup with a clear
+error naming the setting. Docker: mount cert and key read-only and set
+the paths, e.g. `-v ./certs:/certs:ro -e SYNC_TLS_CERT=/certs/cert.pem
+SYNC_TLS_KEY=/certs/key.pem`.
+
+**Certificate trust is YOUR responsibility, not this tool's.** The
+Yealink phone must trust the certificate it sees, otherwise it silently
+fails to fetch the phonebook. Two supported ways:
+
+1. **A publicly signed certificate** for a real hostname (e.g. from
+   Let's Encrypt) — requires the phone to reach the server under that
+   hostname and the CA chain (usually already trusted by the phone).
+   Renewal/ACME is done OUTSIDE this tool (certbot, caddy, traefik —
+   mount the renewed files; the server reads them on every start).
+2. **Your own CA rolled out on the phone** — if the model supports
+   importing a trusted CA. Not every firmware does; check your model's
+   documentation before going this way.
+
+A self-signed certificate WITHOUT a trusted CA will make the phone
+reject the connection — test with a browser or `curl -v` first.
+
+**TLS configuration (audited 2026-10-26 with testssl.sh 3.3dev,
+SSL-Labs rating guide):** the server enforces TLS 1.2+ (explicit
+minimum — no reliance on library defaults), accepts ONLY
+forward-secrecy AEAD suites (ECDHE + AES-GCM / CHACHA20-POLY1305 —
+no CBC, no static-RSA key exchange, no 3DES/RC4), enforces its own
+cipher order, and sends
+`Strict-Transport-Security: max-age=31536000; includeSubDomains` on
+TLS responses (HSTS protects browsers; the phone ignores the header).
+
+Audit result (testssl.sh, all categories): SSLv2/v3 and TLS 1.0/1.1
+not offered; NULL/LOW/3DES/CBC/static-RSA ciphers not offered;
+forward secrecy offered; server cipher order enforced; HSTS 365 days;
+none of the tested vulnerabilities present (Heartbleed, CCS,
+Ticketbleed, ROBOT, CRIME, POODLE, SWEET32, FREAK, DROWN, LOGJAM,
+BEAST, LUCKY13, Winshock, RC4). Client simulations succeed for every
+platform from ~2015 onward (Android 7+, Chrome, Firefox, Edge, Safari,
+Java 8+, OpenSSL 1.0.2+).
+
+**Deliberately accepted limitations (documented):**
+
+- **No OCSP stapling** — Python's ssl module does not implement it.
+  Irrelevant for LAN deployments with long-lived certificates; a
+  publicly exposed host behind a reverse proxy should staple at the
+  proxy instead.
+- **Legacy clients fail by design** — devices that only speak
+  CBC/non-PFS suites (pre-2015 era: IE 8-10 on default settings, Java 7)
+  cannot connect. Every Yealink phone with TLS 1.2+ support works; if
+  an OLD firmware requires CBC suites, TLS mode will not connect and
+  plain HTTP (the default) remains the fallback for that phone.
+- **The audit certificate was self-signed** — testssl grades the
+  *chain of trust*, which is the operator's certificate choice, not
+  the server configuration; the rating cap (T) comes solely from the
+  test certificate.
+
 ## Logging
 
 | Variable | Default | Description |

@@ -4,7 +4,7 @@ services:
     # Pin to a concrete version for reproducible deployments; `latest`
     # pulls the newest release. To build from source instead, replace
     # image: with: build: .
-    image: ghcr.io/otih/yealink-fritzbox-phonebook-sync:0.10.2
+    image: ghcr.io/otih/yealink-fritzbox-phonebook-sync:0.11.0
     restart: unless-stopped
     # Use host networking so the container can reach the Fritzbox
     # (fritz.box resolves via IPv6, which Docker bridge doesn't route).
@@ -26,6 +26,8 @@ services:
       SYNC_ALLOWED_IPS: ${SYNC_ALLOWED_IPS:-}
       SYNC_CACHE_DIR: ${SYNC_CACHE_DIR:-}
       SYNC_DEDUP_CONTACTS: ${SYNC_DEDUP_CONTACTS:-}
+      SYNC_TLS_CERT: ${SYNC_TLS_CERT:-}
+      SYNC_TLS_KEY: ${SYNC_TLS_KEY:-}
     # Read-only root filesystem for defense in depth.
     # The app needs no writable paths — all state is in-memory.
     # Exception: set SYNC_CACHE_DIR and mount a volume for the optional

@@ -54,6 +54,7 @@ import random
 import re
 import signal
 import socket
+import ssl
 import sys
 import threading
 import time
@@ -67,7 +68,7 @@ logger = logging.getLogger("fritz-pb-sync")
 # App version: the single source of truth for humans (startup log),
 # the /metrics endpoint (yfps_build_info) and the release process.
 # Bump on every release (keep in sync with CHANGELOG.md and git tags).
-APP_VERSION = "0.10.2"
+APP_VERSION = "0.11.0"
 
 
 class _RateLimiter:
@@ -713,6 +714,61 @@ def build_menu_xml(phonebooks: list[dict], server_base: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+def build_all_xml() -> str:
+    """
+    Build ONE combined YealinkIPPhoneDirectory from all served phonebooks.
+
+    Target: phones with a single remote-phonebook slot (parts of the T
+    series) where the menu drill-in is not usable — /all.xml gives them
+    one flat directory. Entries are re-parsed from the already-converted
+    per-phonebook XML (so normalization, dedup-scoping and labels are
+    exactly what /contacts/<id>.xml serves) and sorted alphabetically
+    (case-insensitive, umlaut-folding — same key as the converter).
+
+    Cross-phonebook duplicates are intentionally NOT merged: dedup is
+    scoped to one phonebook by design; this endpoint only concatenates.
+    """
+    entries: list[tuple[str, ET.Element]] = []
+    with state.lock:
+        contacts = dict(state.contacts)
+    for xml_str in contacts.values():
+        try:
+            root = ET.fromstring(xml_str)  # noqa: S314 — our own converted output
+        except ET.ParseError:
+            logger.warning("Skipping unparseable phonebook in /all.xml merge")
+            continue
+        for entry in root.iter():
+            if _strip_ns(entry.tag) == "DirectoryEntry":
+                name = ""
+                for child in entry:
+                    if _strip_ns(child.tag) == "Name":
+                        name = (child.text or "").strip()
+                        break
+                entries.append((_sort_key(name), entry))
+
+    lines = ['<?xml version="1.0" encoding="UTF-8"?>', "<YealinkIPPhoneDirectory>"]
+    for _key, entry in sorted(entries, key=lambda e: e[0]):
+        lines.append("  <DirectoryEntry>")
+        for child in entry:
+            tag = _strip_ns(child.tag)
+            if tag == "Name":
+                lines.append("    <Name>%s</Name>" % _escape_xml((child.text or "").strip()))
+            elif tag == "Telephone":
+                label = child.get("label")
+                if label:
+                    lines.append(
+                        '    <Telephone label="%s">%s</Telephone>'
+                        % (_escape_xml(label), _escape_xml((child.text or "").strip()))
+                    )
+                else:
+                    lines.append(
+                        "    <Telephone>%s</Telephone>" % _escape_xml((child.text or "").strip())
+                    )
+        lines.append("  </DirectoryEntry>")
+    lines.append("</YealinkIPPhoneDirectory>")
+    return "\n".join(lines) + "\n"
+
+
 # ---------------------------------------------------------------------------
 # Shared state (thread-safe)
 # ---------------------------------------------------------------------------
@@ -844,6 +900,11 @@ auth_user = ""
 auth_pass = ""
 # Set in main(): rate limiter for auth failures, optional IP allowlist
 rate_limiter = _RateLimiter()
+# True when the server socket is TLS-wrapped (set in main()) — drives the
+# Strict-Transport-Security header (HSTS): advertised on TLS responses
+# only, never on plain HTTP (advertising transport security over an
+# unverified channel would be a lie).
+tls_enabled = False
 ip_allowlist = _IpAllowlist("")
 
 # Threading server: one hung client must never block the health check
@@ -852,9 +913,63 @@ ip_allowlist = _IpAllowlist("")
 _SERVER_CLASS = ThreadingHTTPServer
 
 
-def _make_server(host: str, port: int) -> ThreadingHTTPServer:
-    """Create the (threading) HTTP server — factory for tests and main."""
-    return _SERVER_CLASS((host, port), PhonebookHandler)
+def _load_tls_config() -> tuple[str, str] | None:
+    """Load the optional TLS configuration from SYNC_TLS_CERT/KEY.
+
+    Returns (cert_path, key_path) when BOTH are set, None when BOTH are
+    unset (default: plain HTTP, unchanged behavior). One without the
+    other or unreadable files abort with a ValueError naming the
+    setting — same fail-fast contract as every other setting.
+
+    Trust management is deliberately NOT this tool's job: the phone must
+    trust the certificate (publicly signed cert for a real hostname, or
+    a CA rolled out on the phone). See docs/configuration.md.
+    """
+    cert = os.getenv("SYNC_TLS_CERT", "")
+    key = os.getenv("SYNC_TLS_KEY", "")
+    if not cert and not key:
+        return None
+    if cert and not key:
+        raise ValueError("SYNC_TLS_CERT is set but SYNC_TLS_KEY is missing — set both or neither")
+    if key and not cert:
+        raise ValueError("SYNC_TLS_KEY is set but SYNC_TLS_CERT is missing — set both or neither")
+    for path, setting in ((cert, "SYNC_TLS_CERT"), (key, "SYNC_TLS_KEY")):
+        if not os.path.isfile(path):
+            raise ValueError("Invalid %s value %r (file not found)" % (setting, path))
+    return cert, key
+
+
+def _make_server(
+    host: str, port: int, tls_cert: str | None = None, tls_key: str | None = None
+) -> ThreadingHTTPServer:
+    """Create the (threading) HTTP server — factory for tests and main.
+
+    With tls_cert/tls_key the socket is wrapped in TLS (strictly opt-in;
+    without them this is the unchanged plain-HTTP server). Wrapping at
+    get_request level keeps every handler, auth, metric and endpoint
+    byte-identical under https.
+    """
+    srv = _SERVER_CLASS((host, port), PhonebookHandler)
+
+    global tls_enabled
+    tls_enabled = bool(tls_cert and tls_key)
+    if tls_cert and tls_key:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        # SSL-Labs-style hardening (audited 2026-10-26): TLS 1.2 minimum
+        # EXPLICIT (never trust library defaults across base images),
+        # ECDHE + AEAD only (GCM/CHACHA20 — forward secrecy, no CBC,
+        # no static-RSA key exchange).
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+        ctx.set_ciphers("ECDHE+AESGCM:ECDHE+CHACHA20")
+        ctx.load_cert_chain(tls_cert, tls_key)
+        orig_get_request = srv.get_request
+
+        def _tls_get_request():
+            sock, addr = orig_get_request()
+            return ctx.wrap_socket(sock, server_side=True), addr
+
+        srv.get_request = _tls_get_request  # type: ignore[method-assign]
+    return srv
 
 
 def _placeholder_menu(server_base: str) -> str:
@@ -873,6 +988,18 @@ def _placeholder_menu(server_base: str) -> str:
 # ---------------------------------------------------------------------------
 # HTTP server
 # ---------------------------------------------------------------------------
+
+
+def _prune_fetch_ips(ips: dict[str, float], limit: int = 10) -> dict[str, float]:
+    """Prune the per-IP fetch map to the `limit` most recent fetchers.
+
+    Called on every recorded fetch AND defensively by the /metrics
+    emitter — a map that was inflated externally (tests, restore) can
+    never leak unbounded entries into a scrape.
+    """
+    if len(ips) <= limit:
+        return ips
+    return dict(sorted(ips.items(), key=lambda kv: kv[1])[-limit:])
 
 
 class PhonebookHandler(BaseHTTPRequestHandler):
@@ -950,10 +1077,10 @@ class PhonebookHandler(BaseHTTPRequestHandler):
             state.last_phone_fetch = time.time()
             ip = self.client_address[0]
             state.phone_fetch_ips[ip] = time.time()
-            # Cardinality bound: keep only the 10 most recent fetchers
-            if len(state.phone_fetch_ips) > 10:
-                recent = sorted(state.phone_fetch_ips.items(), key=lambda kv: kv[1])[-10:]
-                state.phone_fetch_ips = dict(recent)
+            # Cardinality bound: prune eagerly on EVERY fetch so the map
+            # can never linger above the limit (the /metrics emitter also
+            # prunes defensively — see do_GET).
+            state.phone_fetch_ips = _prune_fetch_ips(state.phone_fetch_ips)
 
     def do_GET(self) -> None:
         # /health is always open (needed for Docker HEALTHCHECK, monitoring)
@@ -1047,7 +1174,9 @@ class PhonebookHandler(BaseHTTPRequestHandler):
                             )
                         )
                 # Per-IP phone-side fetch age — WHICH phone last pulled
-                # (multi-handset). Bounded to the 10 most recent fetchers.
+                # (multi-handset). Bounded to the 10 most recent fetchers
+                # (pruned defensively here, not only on fetch).
+                state.phone_fetch_ips = _prune_fetch_ips(state.phone_fetch_ips)
                 if state.phone_fetch_ips:
                     lines.append(
                         "# HELP yfps_phonebook_fetch_age_seconds_by_ip "
@@ -1073,6 +1202,11 @@ class PhonebookHandler(BaseHTTPRequestHandler):
                 body = "<YealinkIPPhoneDirectory><DirectoryEntry><Name>Not synced yet</Name></DirectoryEntry></YealinkIPPhoneDirectory>"
             self._serve(body)
             self._record_phone_fetch()
+        elif self.path == "/all.xml":
+            # Combined flat directory — phones with a single remote-
+            # phonebook slot. Same auth/fetch tracking as the others.
+            self._serve(build_all_xml())
+            self._record_phone_fetch()
         elif self.path.startswith("/contacts/") and self.path.endswith(".xml"):
             # Extract phonebook ID from path: /contacts/1.xml → 1
             try:
@@ -1094,6 +1228,11 @@ class PhonebookHandler(BaseHTTPRequestHandler):
         self.send_response_only(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        if tls_enabled:
+            # HSTS (SSL Labs A+ requirement): browsers must not talk to
+            # this endpoint over plain HTTP for a year. Phones ignore
+            # the header; browsers get the protection.
+            self.send_header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(body)
@@ -1532,7 +1671,13 @@ def main() -> None:
     # HTTP server — binding to all interfaces (S104) is intentional:
     # the Yealink phone on the LAN must be able to reach this server.
     # Restrict via container network policy or a reverse proxy if needed.
-    srv = _SERVER_CLASS(("0.0.0.0", args.listen_port), PhonebookHandler)  # noqa: S104
+    try:
+        tls = _load_tls_config()
+    except ValueError as exc:
+        logger.error("Configuration error: %s", exc)
+        sys.exit(1)
+    tls_cert, tls_key = tls or (None, None)
+    srv = _make_server("0.0.0.0", args.listen_port, tls_cert, tls_key)  # noqa: S104
     logger.info("=" * 60)
     logger.info("yealink-fritzbox-phonebook-sync v%s starting", APP_VERSION)
     logger.info("Listening on http://0.0.0.0:%d", args.listen_port)

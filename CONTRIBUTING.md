@@ -130,7 +130,9 @@ Release flow (the dev → main PR **is** the release):
 1. Features merge into `dev` (squash) and collect in `[Unreleased]`.
 2. When a release is due, the release commit (APP_VERSION bump,
    CHANGELOG section rename, image pins) lands **on dev**.
-3. Open the dev → main PR, wait for green CI, squash-merge.
+3. Open the dev → main PR, wait for green CI, **merge (never squash —
+   squashing a long-lived-branch merge breaks the shared dev/main
+   history; the next release PR would conflict)**.
 4. Tag `v<x.y.z>` on the merge commit, wait for the tag build, create the
    GitHub release — after that, main, tag, image and APP_VERSION agree.
 
@@ -140,6 +142,12 @@ unreleased work never sits on the branch users watch.
 
 ## Pull requests
 
+- **One PR per change** (binding): every feature, fix, docs change, CI
+  change, hardening item ships as its OWN pull request — one PR is one
+  referencable unit (changelog entries, issues and discussions link to
+  it; "which PR introduced this?" must always have exactly one answer).
+  Even small related items get separate PRs; a series is fine, batching
+  is not. The release PR (dev → main) is the only aggregation point.
 - PRs run the full CI: lint → tests → E2E container smoke test.
 - Feature/fix PRs target `dev`; the only PR ever targeting `main` is the
   release PR.
