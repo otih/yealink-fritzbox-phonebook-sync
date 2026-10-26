@@ -119,6 +119,14 @@ fails to fetch the phonebook. Two supported ways:
 A self-signed certificate WITHOUT a trusted CA will make the phone
 reject the connection — test with a browser or `curl -v` first.
 
+**TLS configuration (audited 2026-10-26, SSL-Labs A+ style):** the
+server enforces TLS 1.2+ (explicit minimum — no reliance on library
+defaults), accepts ONLY forward-secrecy AEAD suites
+(ECDHE + AES-GCM / CHACHA20-POLY1305 — no CBC, no static-RSA key
+exchange, no 3DES/RC4), and sends
+`Strict-Transport-Security: max-age=31536000; includeSubDomains` on TLS
+responses (HSTS protects browsers; the phone ignores the header).
+
 ## Logging
 
 | Variable | Default | Description |
