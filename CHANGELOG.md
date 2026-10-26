@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Per-IP fetch map bound is now deterministic:** the cardinality
+  limit (10 most recent IPs) previously fired only on the NEXT
+  recorded fetch — a map inflated externally (e.g. by test setup or a
+  future cache restore) could exceed the limit indefinitely and leak
+  into the /metrics scrape. The prune now runs on every recorded fetch
+  AND defensively in the /metrics emitter, so the bound holds without
+  requiring a follow-up fetch. Root cause of order-dependent CI flakes
+  on the Python 3.15 matrix.
+
 ### Security
 
 - **TLS hardened to SSL-Labs A+ style (audit 2026-10-26):** explicit

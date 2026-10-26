@@ -387,3 +387,24 @@ class TestAllXmlEndpoint:
         assert status == 200
         assert "<DirectoryEntry>" not in body
         assert "<YealinkIPPhoneDirectory>" in body
+
+
+class TestFetchIpBoundDeterministic:
+    """The bound is enforced defensively by the /metrics emitter —
+    no fetch required. This closes the race the old test only worked
+    around with a fresh rate limiter."""
+
+    def test_metrics_emitter_prunes_inflated_map(self, server):
+        base, _ = server
+        # Inflate WITHOUT any fetch — the emitter must prune to 10
+        with yfps.state.lock:
+            yfps.state.phone_fetch_ips = {"10.0.0.%d" % i: 1700000000.0 + i for i in range(15)}
+        status, body = _get(base + "/metrics")
+        assert status == 200
+        # 15 entries -> 10 lines max in the per-IP metric family
+        ip_lines = [
+            ln
+            for ln in body.splitlines()
+            if ln.startswith("yfps_phonebook_fetch_age_seconds_by_ip{")
+        ]
+        assert len(ip_lines) == 10
