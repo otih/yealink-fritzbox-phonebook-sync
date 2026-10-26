@@ -301,10 +301,13 @@ jobs:
            "pb_meta": [{"id": 1, "name": "E2E Cache", "count": 7}],
            "last_sync": 1760000000.0, "total_contacts": 7}
           JSON
-          chmod 600 /tmp/yfps-cache/phonebook-cache.json
-          # The container runs as the non-root 'app' user (UID 1000 in
-          # the image) — the bind-mounted cache must be readable by it.
-          chown -R 1000:1000 /tmp/yfps-cache
+          # The container runs as the non-root 'app' user (UID 1000) —
+          # the bind-mounted cache must be readable AND writable by it.
+          # GitHub runners cannot chown to foreign UIDs, so world-access
+          # the test dir instead; production users should prefer a named
+          # volume or chown the host dir (see configuration docs).
+          chmod 777 /tmp/yfps-cache
+          chmod 666 /tmp/yfps-cache/phonebook-cache.json
 
           docker run -d --rm \
             -e FB_HOST=192.0.2.1 \
