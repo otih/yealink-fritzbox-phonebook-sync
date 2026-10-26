@@ -60,7 +60,7 @@ curl -sO $BASE/.env.example && mv .env.example .env
 # Edit .env — set FB_USER, FB_PASSWORD, SYNC_SERVER_URL, SYNC_AUTH_USER, SYNC_AUTH_PASSWORD
 nano .env
 
-docker compose up -d          # pulls ghcr.io/otih/yealink-fritzbox-phonebook-sync:0.9.0
+docker compose up -d          # pulls ghcr.io/otih/yealink-fritzbox-phonebook-sync:0.10.0
 docker compose logs -f
 docker compose down           # stop (graceful, ~1-2s)
 ```
@@ -75,7 +75,7 @@ nano .env
 docker compose up -d
 ```
 
-The `docker-compose.yml` pins a concrete version by default (`0.9.0`) for reproducible deployments — switch to `latest` if you prefer automatic updates, or `build: .` to build from source.
+The `docker-compose.yml` pins a concrete version by default (`0.10.0`) for reproducible deployments — switch to `latest` if you prefer automatic updates, or `build: .` to build from source.
 
 **Testing unreleased changes:** the CI publishes a `:dev` image from the [`dev` integration branch](https://github.com/otih/yealink-fritzbox-phonebook-sync/tree/dev) on every push (same CVE gates as releases). To run a test host on the bleeding edge, point a copy of the compose file at it:
 
