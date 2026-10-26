@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Threat model** (`docs/threat-model.md`, CON.8.A21): STRIDE analysis
+  per component (Fritzbox fetch, HTTP endpoints, on-disk cache, supply
+  chain), asset/protection-need matrix, trust boundaries — plus the
+  first formal documentation of the accepted risks (auth off by
+  default, plaintext HTTP by default, credentials embedded in the
+  phone URL) with revisit conditions.
+
+### Added
+
 - **Grafana dashboard (`grafana/phonebook-sync-dashboard.json`):**
   importable dashboard covering all 13 exported metrics, grouped by
   question — Health & Version (up, version, degraded, sync age,
