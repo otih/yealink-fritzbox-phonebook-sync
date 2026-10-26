@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`SYNC_DEDUP_CONTACTS` fail-fast validation:** a typo (e.g. `treu` or
+  `ja`) previously meant a silent `off`. Unrecognized values now abort
+  startup with a clear error — the same fail-fast contract as every
+  other setting. Accepted: `1`/`true`/`yes`/`on` = enabled,
+  `0`/`false`/`no`/`off`/empty = off.
+
+### Added
+
+- **`--version` flag:** prints the app version and exits — quick answer
+  for support cases, same single source (`APP_VERSION`) as the startup
+  banner and `yfps_build_info`.
+
 ## [0.9.0] - 2026-10-26
 
 ### Changed

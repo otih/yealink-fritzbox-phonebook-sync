@@ -220,6 +220,26 @@ def _parse_log_level(value: str) -> str:
     return level
 
 
+def _parse_bool(value: str, setting: str = "SYNC_DEDUP_CONTACTS") -> bool:
+    """Validate a boolean env value; fail fast on anything unrecognized.
+
+    Empty → False. Accepted truthy: 1/true/yes/on (case-insensitive).
+    Accepted falsy: 0/false/no/off. Anything else raises — a typo like
+    'treu' must abort startup instead of silently disabling the feature
+    (same fail-fast philosophy as _parse_log_level).
+    """
+    if not value:
+        return False
+    normalized = value.strip().lower()
+    if normalized in ("1", "true", "yes", "on"):
+        return True
+    if normalized in ("0", "false", "no", "off"):
+        return False
+    raise ValueError(
+        "Invalid %s value %r (use 1/true/yes/on or 0/false/no/off, empty = off)" % (setting, value)
+    )
+
+
 def _validate_config(cfg: dict) -> None:
     """Validate configuration values; raise ValueError with the offending key."""
     if not (1 <= cfg["fritzbox_port"] <= 65535):
@@ -1202,6 +1222,12 @@ def main() -> None:
         description="Fritzbox → Yealink phonebook sync server",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    p.add_argument(
+        "--version",
+        action="version",
+        version="yealink-fritzbox-phonebook-sync v%s" % APP_VERSION,
+        help="Print the version and exit (single source: APP_VERSION).",
+    )
     p.add_argument("--fritzbox-host", default=os.getenv("FB_HOST", "fritz.box"))
     p.add_argument("--fritzbox-port", type=int, default=int(os.getenv("FB_PORT", "49000")))
     p.add_argument("--fritzbox-user", default=os.getenv("FB_USER", ""))
@@ -1265,7 +1291,7 @@ def main() -> None:
     p.add_argument(
         "--dedup-contacts",
         action="store_true",
-        default=os.getenv("SYNC_DEDUP_CONTACTS", "").lower() in ("1", "true", "yes", "on"),
+        default=_parse_bool(os.getenv("SYNC_DEDUP_CONTACTS", "")),
         help="Merge contacts with the same name within one phonebook into a single "
         "entry and collapse duplicate numbers (default: off — contacts pass through "
         "as the Fritzbox delivers them). Sorting is always on.",
