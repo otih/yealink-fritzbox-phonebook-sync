@@ -104,6 +104,39 @@ accepted for the home/SOHO LAN context (the product's design target):
    served to it. Accepted for the LAN context; TLS protects the
    transport when configured.
 
+## Tooling decision: manual STRIDE (reviewed 2026-10-26)
+
+[OWASP pytm](https://github.com/OWASP/pytm) was evaluated and NOT
+adopted. Rationale: the model has 4 components on a stable
+architecture — pytm pays off for large, frequently-changing systems
+(needs Python 3.11+, Graphviz, Java+PlantUML, pandoc). Its ~130-entry
+threat library is web-app-centric (XSS/CSRF/session families, AWS,
+LLM) — ~90 % not applicable to a GET-only LAN phonebook server.
+Markdown keeps the model versioned next to the code and renders in
+mkdocs with zero toolchain. **Revisit condition:** tool-based
+modeling is re-evaluated when the model grows beyond ~10 components
+or the deployment model changes (internet exposure, reverse proxy).
+
+As part of the evaluation, the full pytm threat list (114 entries) was
+walked against this model. Result: 22 categories fully covered
+(verified in code), 12 not applicable (no sessions, no SQL/LDAP, no
+browser client, no LLM), 2 consciously accepted (version banner as a
+feature; open-source reverse engineering). The documented risk
+acceptances above correspond to the remaining pytm findings (auth
+off, plaintext HTTP, flooding in the LAN, XML depth on trusted
+input). One gap surfaced and was closed below.
+
+## Log integrity (DE04 — audit log manipulation)
+
+The server logs to stdout; the container's read-only root filesystem
+protects the binary and its code, but **log integrity is the host
+operator's responsibility**: the log sink (Docker JSON-file driver,
+journald, or a log collector) lives outside this container and must be
+protected at the host level. Operators with audit requirements should
+forward the `json` log format (`SYNC_LOG_FORMAT=json`) to a
+centralized, append-only sink; `DE04` (audit log manipulation) is
+then mitigated by the sink, not by this service.
+
 ## Review
 
 This model is reviewed when: the trust topology changes (internet

@@ -18,6 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Threat model** (`docs/threat-model.md`, CON.8.A21): STRIDE analysis
+  per component (Fritzbox fetch, HTTP endpoints, on-disk cache, supply
+  chain), asset/protection-need matrix, trust boundaries — plus the
+  first formal documentation of the accepted risks (auth off by
+  default, plaintext HTTP by default, credentials embedded in the
+  phone URL) with revisit conditions. Includes the OWASP pytm
+  evaluation (not adopted; full 114-entry threat list walked against
+  the model) and the log-integrity responsibility split (DE04).
+
 - **Release approval checklist in CONTRIBUTING** (OPS.1.1.6.A4): the
   release PR author works through a formal precondition list before
   opening the dev → main release — CI green, test expectations,
@@ -25,17 +34,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   docs sync, maintainer-only items (rulesets, Pages), and the
   post-merge verification steps. CONTRIBUTING is now explicitly named
   as the binding development guideline per CON.8.A11.
-
-### Added
-
-- **Threat model** (`docs/threat-model.md`, CON.8.A21): STRIDE analysis
-  per component (Fritzbox fetch, HTTP endpoints, on-disk cache, supply
-  chain), asset/protection-need matrix, trust boundaries — plus the
-  first formal documentation of the accepted risks (auth off by
-  default, plaintext HTTP by default, credentials embedded in the
-  phone URL) with revisit conditions.
-
-### Added
 
 - **Grafana dashboard (`grafana/phonebook-sync-dashboard.json`):**
   importable dashboard covering all 13 exported metrics, grouped by
