@@ -222,7 +222,12 @@ All configuration is via environment variables. CLI flags override env vars but 
 
 ## Access control (HTTP Basic Auth)
 
-By default the phonebook is served without authentication. To protect it, set `SYNC_AUTH_USER` and `SYNC_AUTH_PASSWORD` in your `.env`:
+By default the phonebook is served without authentication — a
+**documented risk acceptance for trusted home/SOHO LANs** (any LAN
+device can read the phonebook; the server logs a warning at startup).
+See the [threat model](https://otih.github.io/yealink-fritzbox-phonebook-sync/threat-model/)
+for rationale, revisit conditions and the available mitigations. To
+protect the phonebook, set `SYNC_AUTH_USER` and `SYNC_AUTH_PASSWORD` in your `.env`:
 
 ```bash
 SYNC_AUTH_USER=phonebook
