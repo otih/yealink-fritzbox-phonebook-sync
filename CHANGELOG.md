@@ -35,6 +35,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   post-merge verification steps. CONTRIBUTING is now explicitly named
   as the binding development guideline per CON.8.A11.
 
+- **Caller-ID source documentation:** the troubleshooting guide now
+  explains why the phone display never shows WHICH phonebook a matched
+  contact came from (firmware sees one remote-phonebook source), how
+  the phone's directory-source priority
+  (`directory_setting.lookup_call_in.priority` — a PHONE setting over
+  directory types) decides which name wins across source types, and
+  what to do when the same number exists in two Fritzbox phonebooks.
+
 - **Grafana dashboard (`grafana/phonebook-sync-dashboard.json`):**
   importable dashboard covering all 13 exported metrics, grouped by
   question — Health & Version (up, version, degraded, sync age,
