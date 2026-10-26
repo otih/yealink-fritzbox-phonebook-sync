@@ -1121,6 +1121,11 @@ def sync_loop(
 
     After a failed sync the retry delay grows (60s, 120s, 240s, ...) capped
     at the refresh interval; a successful sync resets the backoff.
+
+    Auto-detected phonebook IDs (empty phonebook_ids argument) are
+    RE-DETECTED on every sync cycle: a phonebook created on the Fritzbox
+    at runtime appears on the phone without a restart. Explicitly
+    configured IDs (FB_PHONEBOOK_ID set) are used verbatim forever.
     """
     pb_ids = list(phonebook_ids)
     consecutive_failures = 0
@@ -1149,6 +1154,10 @@ def sync_loop(
             consecutive_failures += 1
             time.sleep(delay)
             continue
+        if not phonebook_ids:
+            # Auto mode: forget the detected list so the next cycle
+            # re-detects — new Fritzbox phonebooks show up in operation.
+            pb_ids = []
         time.sleep(refresh_interval)
 
 

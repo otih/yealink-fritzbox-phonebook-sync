@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Runtime phonebook discovery (auto mode):** with `FB_PHONEBOOK_ID`
+  unset, the sync loop re-detects the phonebook ID list on every cycle —
+  a phonebook created on the Fritzbox (new Google account, CardDAV source)
+  appears on the phone without a container restart. Explicitly configured
+  IDs keep being used verbatim, as before.
+
 ### Fixed
 
 - **`SYNC_DEDUP_CONTACTS` fail-fast validation:** a typo (e.g. `treu` or
