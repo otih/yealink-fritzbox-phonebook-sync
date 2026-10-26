@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`/all.xml` — combined flat directory:** all phonebooks merged into
+  one YealinkIPPhoneDirectory, alphabetically sorted across phonebook
+  boundaries. For phones with a single remote-phonebook slot where the
+  menu drill-in is not usable. Same auth and fetch tracking as the other
+  phonebook endpoints; cross-phonebook duplicates stay separate (dedup
+  remains scoped to one phonebook).
+
+- **Optional TLS (`SYNC_TLS_CERT` / `SYNC_TLS_KEY`):** set both to serve
+  the phonebook over HTTPS; unset (default) keeps plain HTTP unchanged.
+  One without the other or a missing file aborts startup naming the
+  setting. **Certificate trust is documented as the operator's
+  responsibility:** publicly signed certificate for a real hostname, or
+  your own CA rolled out on the phone — ACME/renewal happens outside
+  this tool (certbot/caddy/traefik in front, renewed files re-read on
+  every start).
+
+### Changed
+
+- **One PR per change** (CONTRIBUTING): every feature, fix, docs or CI
+  change ships as its own pull request — one referencable unit each.
+  The release PR (dev → main) is the only aggregation point. The dev →
+  main merge rule is now also documented as **merge, never squash**
+  (squashing the long-lived-branch merge breaks the shared history —
+  the v0.10.1 conflict lesson).
+
 ### Fixed
 
 - **Per-IP fetch map bound is now deterministic:** the cardinality
@@ -26,35 +53,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   static-RSA and CBC suites and with them the forward-secrecy gap; HSTS
   header (`max-age=31536000; includeSubDomains`) on TLS responses.
   Plain-HTTP mode (default) is untouched.
-
-### Added
-
-- **Optional TLS (`SYNC_TLS_CERT` / `SYNC_TLS_KEY`):** set both to serve
-  the phonebook over HTTPS; unset (default) keeps plain HTTP unchanged.
-  One without the other or a missing file aborts startup naming the
-  setting. **Certificate trust is documented as the operator's
-  responsibility:** publicly signed certificate for a real hostname, or
-  your own CA rolled out on the phone — ACME/renewal happens outside
-  this tool (certbot/caddy/traefik in front, renewed files re-read on
-  every start).
-
-### Added
-
-- **`/all.xml` — combined flat directory:** all phonebooks merged into
-  one YealinkIPPhoneDirectory, alphabetically sorted across phonebook
-  boundaries. For phones with a single remote-phonebook slot where the
-  menu drill-in is not usable. Same auth and fetch tracking as the other
-  phonebook endpoints; cross-phonebook duplicates stay separate (dedup
-  remains scoped to one phonebook).
-
-### Changed
-
-- **One PR per change** (CONTRIBUTING): every feature, fix, docs or CI
-  change ships as its own pull request — one referencable unit each.
-  The release PR (dev → main) is the only aggregation point. The dev →
-  main merge rule is now also documented as **merge, never squash**
-  (squashing the long-lived-branch merge breaks the shared history —
-  the v0.10.1 conflict lesson).
 
 ## [0.10.2] - 2026-10-26
 
@@ -117,6 +115,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   appears on the phone without a container restart. Explicitly configured
   IDs keep being used verbatim, as before.
 
+- **`--version` flag:** prints the app version and exits — quick answer
+  for support cases, same single source (`APP_VERSION`) as the startup
+  banner and `yfps_build_info`.
+
 ### Fixed
 
 - **`SYNC_DEDUP_CONTACTS` fail-fast validation:** a typo (e.g. `treu` or
@@ -124,12 +126,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   startup with a clear error — the same fail-fast contract as every
   other setting. Accepted: `1`/`true`/`yes`/`on` = enabled,
   `0`/`false`/`no`/`off`/empty = off.
-
-### Added
-
-- **`--version` flag:** prints the app version and exits — quick answer
-  for support cases, same single source (`APP_VERSION`) as the startup
-  banner and `yfps_build_info`.
 
 ## [0.9.0] - 2026-10-26
 
@@ -186,8 +182,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   contact count per ID, then exits 0 (OK) or 1 (with hints what to
   check). Never starts the HTTP server. Replaces the README's former
   copy-paste Python snippet for finding phonebook IDs.
-
-### Added (docs)
 
 - **Troubleshooting guide** (`docs/troubleshooting.md`, linked from the
   README): symptom-first walk-through of the most common failure
