@@ -128,6 +128,9 @@ On the Yealink web UI → **Directory → Remote Phone Book**:
 
 Click **Confirm**. The phone downloads the phonebook immediately and caches it locally.
 
+For fleet deployments, the same settings can be mass-provisioned via
+CFG file — see [Auto-Provisioning](https://otih.github.io/yealink-fritzbox-phonebook-sync/provisioning/).
+
 **Single-slot phones:** if your model supports only one remote phonebook (no menu drill-in), point it at `http://<server-ip>:8080/all.xml` instead — it serves all phonebooks as one flat, alphabetically sorted directory.
 
 If it does not work, see the [Troubleshooting guide](https://otih.github.io/yealink-fritzbox-phonebook-sync/troubleshooting/) — symptom-first, from "phone shows nothing" to "stale data" and auth errors.

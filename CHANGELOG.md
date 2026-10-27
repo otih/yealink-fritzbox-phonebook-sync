@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Auto-provisioning guide** (`docs/provisioning.md`): a fill-in
+  common-CFG snippet for Yealink provisioning (remote phonebook URL
+  incl. embedded-auth form, caller-ID lookup priority
+  `directory_setting.lookup_call_in/out.priority`, fetch interval) —
+  the mass-deployment counterpart to the manual web-UI setup in the
+  README, plus a TLS variant and links to server-side config and the
+  caller-ID documentation.
+
 - **Security policy (`SECURITY.md`):** private vulnerability reporting
   via GitHub security advisories (no public issues), expected handling
   (7-day acknowledgement, coordinated disclosure, credit), and scope
