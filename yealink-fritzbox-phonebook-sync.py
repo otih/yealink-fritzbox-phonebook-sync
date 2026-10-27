@@ -704,11 +704,19 @@ def build_menu_xml(phonebooks: list[dict], server_base: str) -> str:
         server_base: base URL for constructing per-phonebook URLs.
                      Each phonebook gets its own URL: <base>/contacts/<id>.xml
     """
+    base = server_base.rstrip("/")
     lines = ['<?xml version="1.0" encoding="UTF-8"?>', "<YealinkIPPhoneMenu>"]
+    if phonebooks:
+        # Combined directory first: makes /all.xml discoverable for menu
+        # drill-in phones; the count is the total across all books.
+        lines.append("  <MenuItem>")
+        lines.append("    <Name>All contacts (%d)</Name>" % sum(pb["count"] for pb in phonebooks))
+        lines.append("    <URL>%s/all.xml</URL>" % base)
+        lines.append("  </MenuItem>")
     for pb in phonebooks:
         lines.append("  <MenuItem>")
         lines.append("    <Name>%s (%d)</Name>" % (_escape_xml(pb["name"]), pb["count"]))
-        lines.append("    <URL>%s/contacts/%d.xml</URL>" % (server_base.rstrip("/"), pb["id"]))
+        lines.append("    <URL>%s/contacts/%d.xml</URL>" % (base, pb["id"]))
         lines.append("  </MenuItem>")
     lines.append("</YealinkIPPhoneMenu>")
     return "\n".join(lines) + "\n"

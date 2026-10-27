@@ -195,7 +195,7 @@ The `FB_PHONEBOOK_ID` setting (or `--phonebook-id` flag) controls which phoneboo
 | Multiple IDs (e.g. `0,1`) | Each phonebook appears as a separate selectable entry |
 | Empty (unset) | All phonebooks are auto-detected and listed individually — re-detected on every sync cycle, so a phonebook created on the Fritzbox appears without a restart |
 
-Each phonebook shows its name and contact count in the menu (e.g. "Work (193)"). Empty phonebooks — those containing only internal Fritzbox numbers like `**9` or `**600` — are automatically hidden from the menu.
+The menu lists the phonebooks as selectable entries (e.g. "Work (193)"), plus an **"All contacts"** entry first — the combined, alphabetically sorted directory served on `/all.xml` (one flat list across all phonebooks). Empty phonebooks — those containing only internal Fritzbox numbers like `**9` or `**600` — are automatically hidden from the menu.
 
 ## Configuration
 

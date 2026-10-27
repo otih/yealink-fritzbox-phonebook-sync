@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **"All contacts" menu entry:** `/menu.xml` now opens with an
+  "All contacts" entry (total count across books, pointing at
+  `/all.xml`), making the combined flat directory discoverable on
+  menu drill-in phones like the AX83H — no need to know the URL.
+  Absent when no phonebooks are served.
+
 - **FritzboxClient test rig (mock sockets):** the SOAP/Digest path —
   raw IPv6 sockets, HTTP Digest per RFC 7616, the 401-or-500 challenge
   retry loop — is now covered by scripted-socket tests: digest
