@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Security policy (`SECURITY.md`):** private vulnerability reporting
+  via GitHub security advisories (no public issues), expected handling
+  (7-day acknowledgement, coordinated disclosure, credit), and scope
+  notes that treat the documented risk acceptances (auth off, plaintext
+  HTTP by default, LAN-only design) as feature requests, not
+  vulnerabilities.
+
 ## [0.12.0] - 2026-10-26
 
 ### Changed
