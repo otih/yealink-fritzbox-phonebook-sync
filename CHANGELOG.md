@@ -45,6 +45,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   directory types) decides which name wins across source types, and
   what to do when the same number exists in two Fritzbox phonebooks.
 
+- **Security policy (`SECURITY.md`):** private vulnerability reporting
+  via GitHub security advisories (no public issues), expected handling
+  (7-day acknowledgement, coordinated disclosure, credit), and scope
+  notes that treat the documented risk acceptances (auth off, plaintext
+  HTTP by default, LAN-only design) as feature requests, not
+  vulnerabilities.
+
 - **Grafana dashboard (`grafana/phonebook-sync-dashboard.json`):**
   importable dashboard covering all 13 exported metrics, grouped by
   question — Health & Version (up, version, degraded, sync age,
