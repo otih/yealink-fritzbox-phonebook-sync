@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Race in phone-fetch tracking:** `_record_phone_fetch()` ran AFTER
+  the response was written to the socket — a client (or metrics
+  scrape) could observe the half-updated per-IP map. Root cause of
+  the flaky bound test since v0.10.0 (only visible under slow
+  execution, e.g. coverage mode): the tracking now runs BEFORE the
+  response is served, making the fetch state consistent when the
+  client returns.
+
 ### Added
 
 - **"All contacts" menu entry:** `/menu.xml` now opens with an
