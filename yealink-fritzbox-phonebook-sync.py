@@ -68,7 +68,7 @@ logger = logging.getLogger("fritz-pb-sync")
 # App version: the single source of truth for humans (startup log),
 # the /metrics endpoint (yfps_build_info) and the release process.
 # Bump on every release (keep in sync with CHANGELOG.md and git tags).
-APP_VERSION = "0.12.0"
+APP_VERSION = "0.13.0"
 
 
 class _RateLimiter:
@@ -704,11 +704,19 @@ def build_menu_xml(phonebooks: list[dict], server_base: str) -> str:
         server_base: base URL for constructing per-phonebook URLs.
                      Each phonebook gets its own URL: <base>/contacts/<id>.xml
     """
+    base = server_base.rstrip("/")
     lines = ['<?xml version="1.0" encoding="UTF-8"?>', "<YealinkIPPhoneMenu>"]
+    if phonebooks:
+        # Combined directory first: makes /all.xml discoverable for menu
+        # drill-in phones; the count is the total across all books.
+        lines.append("  <MenuItem>")
+        lines.append("    <Name>All contacts (%d)</Name>" % sum(pb["count"] for pb in phonebooks))
+        lines.append("    <URL>%s/all.xml</URL>" % base)
+        lines.append("  </MenuItem>")
     for pb in phonebooks:
         lines.append("  <MenuItem>")
         lines.append("    <Name>%s (%d)</Name>" % (_escape_xml(pb["name"]), pb["count"]))
-        lines.append("    <URL>%s/contacts/%d.xml</URL>" % (server_base.rstrip("/"), pb["id"]))
+        lines.append("    <URL>%s/contacts/%d.xml</URL>" % (base, pb["id"]))
         lines.append("  </MenuItem>")
     lines.append("</YealinkIPPhoneMenu>")
     return "\n".join(lines) + "\n"
@@ -1200,13 +1208,13 @@ class PhonebookHandler(BaseHTTPRequestHandler):
                 body = state.menu_xml
             if not body:
                 body = "<YealinkIPPhoneDirectory><DirectoryEntry><Name>Not synced yet</Name></DirectoryEntry></YealinkIPPhoneDirectory>"
-            self._serve(body)
             self._record_phone_fetch()
+            self._serve(body)
         elif self.path == "/all.xml":
             # Combined flat directory — phones with a single remote-
             # phonebook slot. Same auth/fetch tracking as the others.
-            self._serve(build_all_xml())
             self._record_phone_fetch()
+            self._serve(build_all_xml())
         elif self.path.startswith("/contacts/") and self.path.endswith(".xml"):
             # Extract phonebook ID from path: /contacts/1.xml → 1
             try:
@@ -1218,8 +1226,8 @@ class PhonebookHandler(BaseHTTPRequestHandler):
                 body = state.contacts.get(pb_id, "")
             if not body:
                 body = "<YealinkIPPhoneDirectory/>"
-            self._serve(body)
             self._record_phone_fetch()
+            self._serve(body)
         else:
             self.send_error(404)
 

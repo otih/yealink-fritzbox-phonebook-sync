@@ -60,7 +60,7 @@ curl -sO $BASE/.env.example && mv .env.example .env
 # Edit .env — set FB_USER, FB_PASSWORD, SYNC_SERVER_URL, SYNC_AUTH_USER, SYNC_AUTH_PASSWORD
 nano .env
 
-docker compose up -d          # pulls ghcr.io/otih/yealink-fritzbox-phonebook-sync:0.12.0
+docker compose up -d          # pulls ghcr.io/otih/yealink-fritzbox-phonebook-sync:0.13.0
 docker compose logs -f
 docker compose down           # stop (graceful, ~1-2s)
 ```
@@ -75,7 +75,7 @@ nano .env
 docker compose up -d
 ```
 
-The `docker-compose.yml` pins a concrete version by default (`0.12.0`) for reproducible deployments — switch to `latest` if you prefer automatic updates, or `build: .` to build from source.
+The `docker-compose.yml` pins a concrete version by default (`0.13.0`) for reproducible deployments — switch to `latest` if you prefer automatic updates, or `build: .` to build from source.
 
 **Testing unreleased changes:** the CI publishes a `:dev` image from the [`dev` integration branch](https://github.com/otih/yealink-fritzbox-phonebook-sync/tree/dev) on every push (same CVE gates as releases). To run a test host on the bleeding edge, point a copy of the compose file at it:
 
@@ -127,6 +127,9 @@ On the Yealink web UI → **Directory → Remote Phone Book**:
 | Display Name | `Fritzbox` |
 
 Click **Confirm**. The phone downloads the phonebook immediately and caches it locally.
+
+For fleet deployments, the same settings can be mass-provisioned via
+CFG file — see [Auto-Provisioning](https://otih.github.io/yealink-fritzbox-phonebook-sync/provisioning/).
 
 **Single-slot phones:** if your model supports only one remote phonebook (no menu drill-in), point it at `http://<server-ip>:8080/all.xml` instead — it serves all phonebooks as one flat, alphabetically sorted directory.
 
@@ -192,7 +195,7 @@ The `FB_PHONEBOOK_ID` setting (or `--phonebook-id` flag) controls which phoneboo
 | Multiple IDs (e.g. `0,1`) | Each phonebook appears as a separate selectable entry |
 | Empty (unset) | All phonebooks are auto-detected and listed individually — re-detected on every sync cycle, so a phonebook created on the Fritzbox appears without a restart |
 
-Each phonebook shows its name and contact count in the menu (e.g. "Work (193)"). Empty phonebooks — those containing only internal Fritzbox numbers like `**9` or `**600` — are automatically hidden from the menu.
+The menu lists the phonebooks as selectable entries (e.g. "Work (193)"), plus an **"All contacts"** entry first — the combined, alphabetically sorted directory served on `/all.xml` (one flat list across all phonebooks). Empty phonebooks — those containing only internal Fritzbox numbers like `**9` or `**600` — are automatically hidden from the menu.
 
 ## Configuration
 

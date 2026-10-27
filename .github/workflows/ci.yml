@@ -81,10 +81,10 @@ jobs:
         run: pip install pytest pytest-cov
 
       - name: Run tests with coverage
-        # Gate ratchets upward as coverage grows: 45% was the honest
-        # starting point (2026), the suite reached 62% with the negative
-        # tests (v0.10.1) — gate raised to 60% so it can only go up.
-        run: pytest tests/ -v --cov=yealink_fritzbox_phonebook_sync --cov-report=term --cov-fail-under=60
+        # Gate ratchets upward as coverage grows: 45% (start) -> 60%
+        # (negative tests, v0.10.1) -> 70% (FritzboxClient mock-socket
+        # rig, actual: 76%). It can only go up.
+        run: pytest tests/ -v --cov=yealink_fritzbox_phonebook_sync --cov-report=term --cov-fail-under=70
 
   docker:
     name: Docker build & push

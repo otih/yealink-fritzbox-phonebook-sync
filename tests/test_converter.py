@@ -373,7 +373,9 @@ class TestBuildMenuXml:
             {"id": 1, "name": "Work", "count": 193},
         ]
         menu = yfps.build_menu_xml(pbs, "http://192.168.1.50:8080")
-        assert menu.count("<MenuItem>") == 2
+        # 2 phonebooks + the combined "All contacts" entry
+        assert menu.count("<MenuItem>") == 3
+        assert "All contacts (198)" in menu
         assert "Telefonbuch (5)" in menu
         assert "Work (193)" in menu
 
@@ -418,3 +420,28 @@ class TestTypeLabels:
 
     def test_unknown_type_returns_no_label(self):
         assert yfps.TYPE_LABELS.get("somethingelse", "") == ""
+
+
+class TestAllXmlMenuEntry:
+    """The menu gains an 'All contacts' entry pointing at /all.xml,
+    making the combined directory discoverable on phones that use the
+    menu drill-in (AX83H) instead of a direct single-slot URL."""
+
+    def test_menu_contains_all_contacts_entry(self):
+        pbs = [{"id": 1, "name": "Work", "count": 193}]
+        menu = yfps.build_menu_xml(pbs, "http://192.168.1.50:8080")
+        assert "<Name>All contacts (193)</Name>" in menu
+        assert "<URL>http://192.168.1.50:8080/all.xml</URL>" in menu
+
+    def test_all_contacts_entry_comes_first(self):
+        pbs = [{"id": 1, "name": "Work", "count": 5}]
+        menu = yfps.build_menu_xml(pbs, "http://192.168.1.50:8080")
+        pos_all = menu.find("All contacts")
+        pos_work = menu.find("Work (5)")
+        assert 0 < pos_all < pos_work
+
+    def test_all_contacts_absent_when_no_phonebooks(self):
+        # Empty state: no served books -> no all-entry either (it would
+        # point at an empty directory; the placeholder flow covers this)
+        menu = yfps.build_menu_xml([], "http://192.168.1.50:8080")
+        assert "All contacts" not in menu
