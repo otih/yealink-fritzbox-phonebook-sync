@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **All GitHub Actions pinned to commit SHAs:** every external action
+  reference (checkout, setup-python, upload-artifact, github-script,
+  pages actions, docker actions, sbom-action, codeql-action — trivy
+  was already pinned) now points at the exact commit SHA with the
+  version tag in a comment, closing the gap between the project's
+  base-image digest pinning and its own CI supply chain. A compromised
+  moving tag can no longer execute in this repository's CI (the
+  docker job holds `packages:write` credentials). The single
+  remaining `@main` is the internal `workflow_call` into our own
+  protected ci.yml — documented in place why a SHA there would break
+  the base-drift rebuild. Dependabot continues to bump the pinned
+  SHAs weekly.
+
 ## [0.13.0] - 2026-10-27
 
 ### Fixed
