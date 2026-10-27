@@ -1208,13 +1208,13 @@ class PhonebookHandler(BaseHTTPRequestHandler):
                 body = state.menu_xml
             if not body:
                 body = "<YealinkIPPhoneDirectory><DirectoryEntry><Name>Not synced yet</Name></DirectoryEntry></YealinkIPPhoneDirectory>"
-            self._serve(body)
             self._record_phone_fetch()
+            self._serve(body)
         elif self.path == "/all.xml":
             # Combined flat directory — phones with a single remote-
             # phonebook slot. Same auth/fetch tracking as the others.
-            self._serve(build_all_xml())
             self._record_phone_fetch()
+            self._serve(build_all_xml())
         elif self.path.startswith("/contacts/") and self.path.endswith(".xml"):
             # Extract phonebook ID from path: /contacts/1.xml → 1
             try:
@@ -1226,8 +1226,8 @@ class PhonebookHandler(BaseHTTPRequestHandler):
                 body = state.contacts.get(pb_id, "")
             if not body:
                 body = "<YealinkIPPhoneDirectory/>"
-            self._serve(body)
             self._record_phone_fetch()
+            self._serve(body)
         else:
             self.send_error(404)
 
