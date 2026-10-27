@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **FritzboxClient test rig (mock sockets):** the SOAP/Digest path —
+  raw IPv6 sockets, HTTP Digest per RFC 7616, the 401-or-500 challenge
+  retry loop — is now covered by scripted-socket tests: digest
+  computation verified against recomputed RFC hashes (with and without
+  qop), the retry loop with the Fritzbox 500-then-401 quirk, the no-auth
+  fallback, persistent network failure, and ID parsing. Two product
+  quirks are now pinned as tests: the loop consumes ALL retries even on
+  200-without-challenge (only exceptions short-circuit), and 500s
+  without a challenge header end in the no-auth path with the last
+  body — the exact behavior the inconsistent Fritzbox relies on.
+  Coverage rises 64% → 76%; the CI gate ratchets 60 → 70.
+
 - **Auto-provisioning guide** (`docs/provisioning.md`): a fill-in
   common-CFG snippet for Yealink provisioning (remote phonebook URL
   incl. embedded-auth form, caller-ID lookup priority
