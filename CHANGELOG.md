@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **README "Who this is for" section:** an honest scope statement —
+  the exact niche (contacts on a Yealink phone, living on a Fritzbox,
+  no manual maintenance), the cases this tool is NOT for (Broadsoft/
+  LDAP environments, photo expectations, cloud-service expectations),
+  and a fair comparison with the related approaches (dead Google sync,
+  CardDAV converters, manual export). Helps the right people find it
+  and the wrong people skip it.
+
 ### Security
 
 - **All GitHub Actions pinned to commit SHAs:** every external action
