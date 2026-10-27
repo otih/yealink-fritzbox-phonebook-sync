@@ -44,6 +44,34 @@ This setup works seamlessly alongside a Deutsche Giganetz (DGN) SIP trunk. The F
 
 The server maintains an in-memory cache of the converted phonebook. The Yealink phone polls `/menu.xml` on its own schedule (typically every 6 hours). The server refreshes its cache from the Fritzbox on a configurable interval (default: hourly). If the Fritzbox is temporarily unreachable, the server continues serving the last-known-good phonebook and retries in the background.
 
+## Who this is for (and what else exists)
+
+You want contacts on a **Yealink IP phone**, your contacts live on a
+**Fritzbox** (or sync into it — Google via AVM's OAuth, CardDAV/Nextcloud,
+any provider the Fritzbox aggregates), and you do not want to maintain
+them by hand on the phone. That is this project's exact niche.
+
+It is NOT for you if:
+
+- you run a Broadsoft/Asterisk/FRITZ!-less environment — for those,
+  phone-native LDAP or Broadsoft directories are the standard answer;
+- you want photos on the phone: the remote-phonebook XML format has no
+  photo element (firmware limitation, documented in the docs);
+- you expect a cloud service: this runs on your LAN, reading from YOUR
+  Fritzbox — no third party involved.
+
+Related approaches, for fairness:
+
+- **Yealink's Google sync** — dead for modern Google accounts (the
+  reason this project exists, see above).
+- **CardDAV server + a converter** — more moving parts, same outcome:
+  you would re-implement what the Fritzbox already does (aggregation).
+- **Manual export/import** (Fritzbox XML → phone web UI) — works once,
+  rots immediately; this server automates exactly that path.
+
+If your setup matches the niche above and you want a zero-dependency,
+single-file, container-first tool with monitoring built in — read on.
+
 ## Quick start
 
 ### Option A: Docker (recommended)
