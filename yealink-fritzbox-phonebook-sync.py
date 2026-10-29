@@ -68,7 +68,7 @@ logger = logging.getLogger("fritz-pb-sync")
 # App version: the single source of truth for humans (startup log),
 # the /metrics endpoint (yfps_build_info) and the release process.
 # Bump on every release (keep in sync with CHANGELOG.md and git tags).
-APP_VERSION = "0.13.1"
+APP_VERSION = "0.13.2"
 
 
 class _RateLimiter:
@@ -286,6 +286,33 @@ def _validate_config(cfg: dict) -> None:
 # dependency for no practical gain here; revisit if the trust model changes.
 
 
+def _resolve_host(host: str) -> tuple[int, tuple]:
+    """Resolve a host for TR-064 SOAP calls, family-tolerant.
+
+    History: this project's author network resolves fritz.box IPv6-only
+    (Docker bridge has no IPv6, hence compose uses network_mode: host),
+    so the socket was hardcoded AF_INET6. That broke EVERY sync for
+    anyone with an IPv4-only Fritzbox: a plain IPv4 literal
+    (192.168.179.1 — the Fritzbox LAN default) crashed with
+    "Address family for hostname not supported" on every attempt.
+
+    Contract: resolve via getaddrinfo(AF_UNSPEC) — literal addresses
+    pass through, hostnames resolve to whatever the network offers.
+    IPv6 preferred (author's network is IPv6-only for fritz.box; a
+    v4-mapped ::ffff: literal still returns AF_INET6), IPv4 as
+    fallback. Raises socket.gaierror for unresolvable names — the
+    clean resolver error, not the AF-family crash.
+    """
+    infos = socket.getaddrinfo(host, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+    if not infos:
+        raise socket.gaierror(socket.EAI_NONAME, f"no address for {host!r}")
+    v6 = [i for i in infos if i[0] == socket.AF_INET6]
+    v4 = [i for i in infos if i[0] == socket.AF_INET]
+    chosen = (v6 or v4 or infos)[0]
+    family, _type, _proto, _canon, sockaddr = chosen
+    return family, sockaddr
+
+
 class FritzboxClient:
     """Minimal TR-064 SOAP client for phonebook retrieval."""
 
@@ -414,10 +441,13 @@ class FritzboxClient:
         Raises socket.error on connection/network failures, RuntimeError
         on malformed responses.
         """
-        sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        family, sockaddr = _resolve_host(self.host)
+        sock = socket.socket(family, socket.SOCK_STREAM)
         sock.settimeout(SOCKET_TIMEOUT)
         try:
-            sock.connect((self.host, self.port))
+            # _resolve_host returns a port-less sockaddr — re-attach
+            # the configured port (sockaddr[0] = resolved address).
+            sock.connect((sockaddr[0], self.port))
 
             lines = [f"POST {path} HTTP/1.1", f"Host: {self.host}:{self.port}"]
             for k, v in headers.items():
@@ -1348,7 +1378,7 @@ def sync_loop(
                 pb_ids = client.get_phonebook_ids()
                 logger.info("Auto-detected phonebook IDs: %s", pb_ids)
             except Exception as exc:
-                logger.warning("Still cannot detect phonebook IDs: %s", exc)
+                logger.warning("Cannot auto-detect phonebook IDs yet: %s", exc)
                 with state.lock:
                     state.sync_failures += 1
                 time.sleep(_backoff_delay(consecutive_failures, refresh_interval))
@@ -1624,15 +1654,15 @@ def main() -> None:
     if args.phonebook_id:
         pb_ids = [int(i) for i in args.phonebook_id.split(",")]
     else:
-        try:
-            pb_ids = client.get_phonebook_ids()
-            logger.info("Auto-detected phonebook IDs: %s", pb_ids)
-        except Exception as exc:
-            logger.warning(
-                "Cannot auto-detect phonebook IDs (%s) — starting server anyway, will retry in background",
-                exc,
-            )
-            pb_ids = []
+        # Auto-detection happens in the BACKGROUND sync loop, never here:
+        # this call reaches the network, and a slow/unreachable Fritzbox
+        # must not delay the HTTP server from starting (Docker healthcheck
+        # restart loops). sync_loop re-detects with backoff on every cycle.
+        pb_ids = []
+        logger.info(
+            "Phonebook ID auto-detection deferred to background sync "
+            "(set FB_PHONEBOOK_ID to pin explicit IDs)"
+        )
 
     # Serve a placeholder until first successful sync
     with state.lock:
@@ -1661,11 +1691,14 @@ def main() -> None:
         if _load_cache(cache_dir):
             logger.info("Serving cached phonebook until the next successful sync")
 
-    # Initial sync (non-blocking — server starts even if this fails)
-    try:
-        sync_once(client, pb_ids, server_base, external_url)
-    except Exception as exc:
-        logger.warning("Initial sync failed (will retry in background): %s", exc)
+    # No synchronous initial sync here: sync_once reaches the network and
+    # must never delay the HTTP server start (the comment above this block
+    # claimed "non-blocking" for years while the call actually blocked —
+    # invisible only because the IPv6-only socket crashed instantly on
+    # unreachable hosts). sync_loop performs the first sync immediately
+    # in its background thread, with backoff on failure.
+    # The placeholder/cache snapshot served in the meantime is the
+    # designed degraded state (see docs/troubleshooting.md).
 
     # Background sync thread
     t = threading.Thread(

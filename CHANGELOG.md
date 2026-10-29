@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.2] - 2026-10-29
+
+### Fixed
+
+- **Dual-stack socket resolution — plain IPv4 addresses work now.**
+  The TR-064 socket was hardcoded `AF_INET6` because the author's
+  network resolves fritz.box IPv6-only. For anyone else this broke
+  EVERY sync: a plain IPv4 literal (192.168.179.1 — the Fritzbox LAN
+  default) or a hostname without AAAA record crashed with
+  "Address family for hostname not supported". New `_resolve_host()`
+  resolves via `getaddrinfo(AF_UNSPEC)`, prefers IPv6 (author's
+  network; v4-mapped ::ffff: literals keep working), falls back to
+  IPv4. Negative test: unresolvable names raise the clean
+  `socket.gaierror`, not the AF-family crash.
+- **Non-blocking server boot (unmasked by the dual-stack fix).**
+  `main()` called phonebook auto-detection and the initial sync
+  SYNCHRONOUSLY before binding the HTTP port — the code comment
+  claimed "non-blocking" for years while the call actually blocked.
+  Invisible only because the IPv6-only socket crashed instantly on
+  unreachable hosts; with working dual-stack timeouts a boot against
+  an unreachable Fritzbox delayed /health by minutes — a Docker
+  healthcheck would restart-loop the container. Detection and the
+  initial sync now happen in the background sync loop (which already
+  re-detects with backoff); boot time to /health measured 0.27s
+  against an unreachable Fritzbox.
+
 ## [0.13.1] - 2026-10-29
 
 ### Added
