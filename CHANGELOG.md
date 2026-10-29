@@ -17,6 +17,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   CardDAV converters, manual export). Helps the right people find it
   and the wrong people skip it.
 
+### Added
+
+- **Process-level E2E tests for `main()`** (`tests/test_main_process.py`):
+  real subprocesses booting the actual server — startup with the
+  version banner, /health + /metrics with the unreachable-Fritzbox
+  degraded state, placeholder menu before the first sync, cache
+  restore from `SYNC_CACHE_DIR` end-to-end (menu + contacts + health
+  counts), and graceful SIGTERM shutdown (exit 0 within seconds).
+  These pin the WIRING of main() — env parsing, server bootstrap,
+  signal handling — as behavior tests. Note: subprocess coverage does
+  not feed the coverage figure (the metric measures the test
+  process), so the gate stays at 70 on purpose; the tests' value is
+  behavioral, not statistical.
+
 ### Security
 
 - **All GitHub Actions pinned to commit SHAs:** every external action
