@@ -4,7 +4,7 @@ services:
     # Pin to a concrete version for reproducible deployments; `latest`
     # pulls the newest release. To build from source instead, replace
     # image: with: build: .
-    image: ghcr.io/otih/yealink-fritzbox-phonebook-sync:0.13.1
+    image: ghcr.io/otih/yealink-fritzbox-phonebook-sync:0.13.2
     restart: unless-stopped
     # Use host networking so the container can reach the Fritzbox
     # (fritz.box resolves via IPv6, which Docker bridge doesn't route).
