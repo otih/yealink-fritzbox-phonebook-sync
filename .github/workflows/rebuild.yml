@@ -78,6 +78,9 @@ jobs:
     name: Rebuild and publish via CI pipeline
     needs: drift-check
     if: needs.drift-check.outputs.changed == 'true'
+    # workflow_call on our own repo stays @main deliberately: a SHA would
+    # freeze ci.yml's content and break the base-drift rebuild whenever
+    # ci.yml evolves. The ref is internal (same repo, protected branch).
     uses: otih/yealink-fritzbox-phonebook-sync/.github/workflows/ci.yml@main
 
   # Version releases remain an explicit maintainer/AI-agent decision;

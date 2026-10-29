@@ -44,6 +44,34 @@ This setup works seamlessly alongside a Deutsche Giganetz (DGN) SIP trunk. The F
 
 The server maintains an in-memory cache of the converted phonebook. The Yealink phone polls `/menu.xml` on its own schedule (typically every 6 hours). The server refreshes its cache from the Fritzbox on a configurable interval (default: hourly). If the Fritzbox is temporarily unreachable, the server continues serving the last-known-good phonebook and retries in the background.
 
+## Who this is for (and what else exists)
+
+You want contacts on a **Yealink IP phone**, your contacts live on a
+**Fritzbox** (or sync into it — Google via AVM's OAuth, CardDAV/Nextcloud,
+any provider the Fritzbox aggregates), and you do not want to maintain
+them by hand on the phone. That is this project's exact niche.
+
+It is NOT for you if:
+
+- you run a Broadsoft/Asterisk/FRITZ!-less environment — for those,
+  phone-native LDAP or Broadsoft directories are the standard answer;
+- you want photos on the phone: the remote-phonebook XML format has no
+  photo element (firmware limitation, documented in the docs);
+- you expect a cloud service: this runs on your LAN, reading from YOUR
+  Fritzbox — no third party involved.
+
+Related approaches, for fairness:
+
+- **Yealink's Google sync** — dead for modern Google accounts (the
+  reason this project exists, see above).
+- **CardDAV server + a converter** — more moving parts, same outcome:
+  you would re-implement what the Fritzbox already does (aggregation).
+- **Manual export/import** (Fritzbox XML → phone web UI) — works once,
+  rots immediately; this server automates exactly that path.
+
+If your setup matches the niche above and you want a zero-dependency,
+single-file, container-first tool with monitoring built in — read on.
+
 ## Quick start
 
 ### Option A: Docker (recommended)
@@ -60,7 +88,7 @@ curl -sO $BASE/.env.example && mv .env.example .env
 # Edit .env — set FB_USER, FB_PASSWORD, SYNC_SERVER_URL, SYNC_AUTH_USER, SYNC_AUTH_PASSWORD
 nano .env
 
-docker compose up -d          # pulls ghcr.io/otih/yealink-fritzbox-phonebook-sync:0.13.0
+docker compose up -d          # pulls ghcr.io/otih/yealink-fritzbox-phonebook-sync:0.13.1
 docker compose logs -f
 docker compose down           # stop (graceful, ~1-2s)
 ```
@@ -75,7 +103,7 @@ nano .env
 docker compose up -d
 ```
 
-The `docker-compose.yml` pins a concrete version by default (`0.13.0`) for reproducible deployments — switch to `latest` if you prefer automatic updates, or `build: .` to build from source.
+The `docker-compose.yml` pins a concrete version by default (`0.13.1`) for reproducible deployments — switch to `latest` if you prefer automatic updates, or `build: .` to build from source.
 
 **Testing unreleased changes:** the CI publishes a `:dev` image from the [`dev` integration branch](https://github.com/otih/yealink-fritzbox-phonebook-sync/tree/dev) on every push (same CVE gates as releases). To run a test host on the bleeding edge, point a copy of the compose file at it:
 

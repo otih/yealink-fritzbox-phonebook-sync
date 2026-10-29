@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-10-29
+
+### Added
+
+- **README "Who this is for" section:** an honest scope statement —
+  the exact niche (contacts on a Yealink phone, living on a Fritzbox,
+  no manual maintenance), the cases this tool is NOT for (Broadsoft/
+  LDAP environments, photo expectations, cloud-service expectations),
+  and a fair comparison with the related approaches (dead Google sync,
+  CardDAV converters, manual export). Helps the right people find it
+  and the wrong people skip it.
+
+### Added
+
+- **Process-level E2E tests for `main()`** (`tests/test_main_process.py`):
+  real subprocesses booting the actual server — startup with the
+  version banner, /health + /metrics with the unreachable-Fritzbox
+  degraded state, placeholder menu before the first sync, cache
+  restore from `SYNC_CACHE_DIR` end-to-end (menu + contacts + health
+  counts), and graceful SIGTERM shutdown (exit 0 within seconds).
+  These pin the WIRING of main() — env parsing, server bootstrap,
+  signal handling — as behavior tests. Note: subprocess coverage does
+  not feed the coverage figure (the metric measures the test
+  process), so the gate stays at 70 on purpose; the tests' value is
+  behavioral, not statistical.
+
+### Security
+
+- **All GitHub Actions pinned to commit SHAs:** every external action
+  reference (checkout, setup-python, upload-artifact, github-script,
+  pages actions, docker actions, sbom-action, codeql-action — trivy
+  was already pinned) now points at the exact commit SHA with the
+  version tag in a comment, closing the gap between the project's
+  base-image digest pinning and its own CI supply chain. A compromised
+  moving tag can no longer execute in this repository's CI (the
+  docker job holds `packages:write` credentials). The single
+  remaining `@main` is the internal `workflow_call` into our own
+  protected ci.yml — documented in place why a SHA there would break
+  the base-drift rebuild. Dependabot continues to bump the pinned
+  SHAs weekly.
+
 ## [0.13.0] - 2026-10-27
 
 ### Fixed
