@@ -271,11 +271,16 @@ jobs:
 
       - name: --check must fail cleanly against a dead Fritzbox
         # Diagnostic mode exit codes, exercised in the real container:
-        # against the TEST-NET host it must print FAIL + hints and exit 1
-        # — and never hang (the SOAP timeout applies).
+        # against the TEST-NET host it must print FAIL + hints and exit 1.
+        # Since the dual-stack fix the socket really CONNECTS (instead of
+        # crashing instantly with an AF-family error), a silently dropping
+        # host takes the full honest timeout: MAX_CHALLENGE_RETRIES (5) x
+        # SOCKET_TIMEOUT (15s) = 75s plus overhead. The old `timeout 60`
+        # was calibrated on the BUG's instant crash — 180s is the real
+        # contract with headroom.
         run: |
           set +e
-          timeout 60 docker run --rm \
+          timeout 180 docker run --rm \
             -e FB_HOST=192.0.2.1 -e FB_USER=dummy -e FB_PASSWORD=dummy \
             --entrypoint python3 yfps-e2e:local \
             /app/yealink-fritzbox-phonebook-sync.py --check
