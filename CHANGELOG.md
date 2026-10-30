@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Error-path tests for the previously untested failure branches**
+  (8 new tests): raw HTTP response parser contracts (empty response,
+  missing separator, malformed status line, non-numeric status), the
+  phonebook URL scheme refusal (file:// and ftp:// — the security
+  path against a compromised Fritzbox), corrupt-book skip in the
+  /all.xml merge, and the JSON log formatter output. Branch coverage
+  77% -> 79%; **the CI gate ratchets 70 -> 75.**
+
 ### Fixed
 
 - **Lint gates from v0.13.3 are actually active now.** The PR #77
