@@ -13,7 +13,7 @@ it for convenient browsing.
 ## Quick facts
 
 - **Tested with:** Yealink AX83H Wi-Fi handset × Fritzbox 7530 AX (FritzOS 8.25)
-- **Zero pip dependencies** — pure Python 3.8+ standard library
+- **Zero pip dependencies** — pure Python 3.9+ standard library
 - **Docker image:** ~55 MB (Alpine), multi-arch (amd64 + arm64), with SBOM attestation
 - **License:** MIT
 

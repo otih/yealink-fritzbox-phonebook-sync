@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import contextlib
 import hashlib
 import hmac
 import ipaddress
@@ -254,7 +255,6 @@ def _parse_int_env(name: str, default: str) -> int:
     try:
         return int(raw)
     except ValueError:
-        # noqa: B904 — the int() message adds nothing for the user; the
         # variable name and expected format are the actionable part.
         raise ValueError("Invalid %s value %r (must be an integer)" % (name, raw)) from None
 
@@ -348,20 +348,20 @@ class FritzboxClient:
 
         # HTTP Digest Auth requires MD5 per RFC 7616 — this is the protocol
         # computation, not password hashing. noqa: S324
-        ha1 = hashlib.md5(f"{self.user}:{realm}:{self.password}".encode()).hexdigest()  # noqa: S324
-        ha2 = hashlib.md5(f"POST:{uri}".encode()).hexdigest()  # noqa: S324
+        ha1 = hashlib.md5(f"{self.user}:{realm}:{self.password}".encode()).hexdigest()
+        ha2 = hashlib.md5(f"POST:{uri}".encode()).hexdigest()
 
         if qop:
             cnonce = "%032x" % random.getrandbits(128)
             nc = "00000001"
-            response = hashlib.md5(f"{ha1}:{nonce}:{nc}:{cnonce}:{qop}:{ha2}".encode()).hexdigest()  # noqa: S324 — RFC 7616 Digest protocol
+            response = hashlib.md5(f"{ha1}:{nonce}:{nc}:{cnonce}:{qop}:{ha2}".encode()).hexdigest()
             return (
                 f'Digest username="{self.user}", realm="{realm}", '
                 f'nonce="{nonce}", uri="{uri}", algorithm={algo}, '
                 f'qop={qop}, nc={nc}, cnonce="{cnonce}", response="{response}"'
             )
         else:
-            response = hashlib.md5(f"{ha1}:{nonce}:{ha2}".encode()).hexdigest()  # noqa: S324 — RFC 7616 Digest protocol
+            response = hashlib.md5(f"{ha1}:{nonce}:{ha2}".encode()).hexdigest()
             return (
                 f'Digest username="{self.user}", realm="{realm}", '
                 f'nonce="{nonce}", uri="{uri}", response="{response}"'
@@ -517,7 +517,7 @@ class FritzboxClient:
     def get_phonebook_ids(self) -> list[int]:
         """Return list of phonebook IDs available on the Fritzbox."""
         raw = self._soap("GetPhonebookList")
-        root = ET.fromstring(raw)  # noqa: S314 — trusted Fritzbox source, see security note
+        root = ET.fromstring(raw)
         for elem in root.iter():
             if _strip_ns(elem.tag) == "NewPhonebookList":
                 ids_str = (elem.text or "").strip()
@@ -528,7 +528,7 @@ class FritzboxClient:
         """Return the download URL for a specific phonebook ID."""
         inner = "<NewPhonebookId>%d</NewPhonebookId>" % phonebook_id
         raw = self._soap("GetPhonebook", inner)
-        root = ET.fromstring(raw)  # noqa: S314 — trusted Fritzbox source, see security note
+        root = ET.fromstring(raw)
         for elem in root.iter():
             if _strip_ns(elem.tag) == "NewPhonebookURL":
                 return (elem.text or "").strip()
@@ -547,7 +547,7 @@ class FritzboxClient:
         if not url.startswith(("http://", "https://")):
             raise ValueError("Refusing non-HTTP phonebook URL: %s" % url[:120])
         logger.info("Downloading phonebook %d from %s", phonebook_id, url)
-        resp = urlopen(url, timeout=DOWNLOAD_TIMEOUT)  # noqa: S310 — scheme whitelisted above
+        resp = urlopen(url, timeout=DOWNLOAD_TIMEOUT)
         return bytes(resp.read())
 
     def fetch_all_phonebooks(self, ids: list[int]) -> bytes:
@@ -628,7 +628,7 @@ def convert_single_phonebook(
     umlaut-folded) — the phone shows a sorted directory, not Fritzbox
     delivery order.
     """
-    root = ET.fromstring(fritzbox_xml_bytes)  # noqa: S314 — trusted Fritzbox source, see security note
+    root = ET.fromstring(fritzbox_xml_bytes)
 
     # Extract phonebook name from the <phonebook name="..."> attribute
     pb_name = "Telefonbuch"
@@ -786,7 +786,7 @@ def build_all_xml() -> str:
         contacts = dict(state.contacts)
     for xml_str in contacts.values():
         try:
-            root = ET.fromstring(xml_str)  # noqa: S314 — our own converted output
+            root = ET.fromstring(xml_str)
         except ET.ParseError:
             logger.warning("Skipping unparseable phonebook in /all.xml merge")
             continue
@@ -901,10 +901,8 @@ def _save_cache(directory: str) -> None:
         os.replace(tmp, path)
     except OSError:
         # Never let a cache write break the sync loop
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(tmp)
-        except OSError:
-            pass
         logger.warning("Could not write phonebook cache to %s", path)
 
 
@@ -1218,7 +1216,7 @@ class PhonebookHandler(BaseHTTPRequestHandler):
                     lines.append("# HELP yfps_phonebook_contacts Contact count per phonebook")
                     lines.append("# TYPE yfps_phonebook_contacts gauge")
                     for pb in state.pb_meta:
-                        lines.append(
+                        lines.append(  # noqa: PERF401 — append keeps the metric line format explicit
                             'yfps_phonebook_contacts{id="%d",name="%s"} %d'
                             % (
                                 cast(int, pb["id"]),
@@ -1469,7 +1467,7 @@ def _run_check(client: FritzboxClient, phonebook_id_arg: str) -> int:
                     "WARN: phonebook %d '%s': 0 usable contacts "
                     "(only internal numbers or empty)" % (pid, name)
                 )
-        except Exception as exc:
+        except Exception as exc:  # noqa: PERF203 — per-book isolation is the design: one failing book must not abort the check
             print("FAIL: cannot fetch/convert phonebook %d: %s" % (pid, exc))
             exit_code = 1
     if exit_code:
@@ -1733,7 +1731,7 @@ def main() -> None:
         logger.error("Configuration error: %s", exc)
         sys.exit(1)
     tls_cert, tls_key = tls or (None, None)
-    srv = _make_server("0.0.0.0", args.listen_port, tls_cert, tls_key)  # noqa: S104
+    srv = _make_server("0.0.0.0", args.listen_port, tls_cert, tls_key)
     logger.info("=" * 60)
     logger.info("yealink-fritzbox-phonebook-sync v%s starting", APP_VERSION)
     logger.info("Listening on http://0.0.0.0:%d", args.listen_port)

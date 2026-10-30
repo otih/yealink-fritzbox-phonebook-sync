@@ -1,6 +1,6 @@
 [tool.ruff]
 line-length = 100
-target-version = "py38"
+target-version = "py39"
 
 [tool.ruff.lint]
 select = [
@@ -18,8 +18,8 @@ select = [
 ignore = [
     "E501",  # line too long (handled by formatter)
     "B008",  # do not perform function calls in argument defaults
-    "UP031",  # percent-format is fine — project targets Python 3.8 compatibility
-    "UP032",  # f-strings: keep %-format for 3.8 compat, avoid churn
+    "UP031",  # percent-format is deliberate — consistent style, no f-string churn
+    "UP032",  # f-strings: %-format kept for style consistency, no churn
     # --- accepted security findings (documented risks, see docs/threat-model.md) ---
     "S104",  # 0.0.0.0 bind intentional: the Yealink phone on the LAN must reach
              # the server; restrict via container network policy / reverse proxy

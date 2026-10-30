@@ -7,7 +7,7 @@ A lightweight server that bridges the gap between Fritzbox phonebooks and Yealin
 
 **Tested with:** Yealink AX83H Wi-Fi handset × Fritzbox 7530 AX (FritzOS 8.25), connected via Deutsche Giganetz SIP trunk. Should work with any Yealink phone supporting remote phonebooks and any Fritzbox with TR-064 enabled.
 
-**Zero pip dependencies** — pure Python 3.8+ standard library. The Docker image is ~55 MB (Alpine-based).
+**Zero pip dependencies** — pure Python 3.9+ standard library. The Docker image is ~55 MB (Alpine-based).
 
 ## Why this exists
 

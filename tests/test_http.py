@@ -56,7 +56,7 @@ def _get(url, auth=None):
 
 class TestHealthEndpoint:
     def test_health_open_without_auth(self, server):
-        base, st = server
+        base, _st = server
         yfps.auth_user = ""
         status, body = _get(base + "/health")
         assert status == 200
@@ -78,7 +78,7 @@ class TestHealthEndpoint:
 class TestAuthEnforcement:
     @pytest.fixture(autouse=True)
     def enable_auth(self, server):
-        base, st = server
+        _base, _st = server
         yfps.auth_user = "user1"
         yfps.auth_pass = "secret1"
         yield
@@ -212,7 +212,7 @@ class TestRouting:
 
     def test_root_serves_menu(self, server):
         base, _ = server
-        status, body = _get(base + "/")
+        status, _body = _get(base + "/")
         assert status == 200
 
     def test_contacts_with_numeric_id(self, server):
@@ -259,15 +259,15 @@ class TestRouting:
         status, body = _get(base + "/metrics")
         assert status == 200
         assert "yfps_phonebook_fetch_total 1" in body
-        total_line = [
+        total_line = next(
             ln
             for ln in body.splitlines()
             if ln.startswith("yfps_phonebook_fetch_last_timestamp_seconds")
-        ][0]
+        )
         assert int(total_line.split()[-1]) > 0
-        age_line = [
+        age_line = next(
             ln for ln in body.splitlines() if ln.startswith("yfps_phonebook_fetch_age_seconds")
-        ][0]
+        )
         assert int(age_line.split()[-1]) == 0  # just fetched
 
 
@@ -329,7 +329,7 @@ class TestPerIpFetchMetrics:
             yfps.state.phone_fetch_ips = {}
             yfps.state.last_phone_fetch = 0
         _get(base + "/menu.xml")
-        status, body = _get(base + "/metrics")
+        _status, body = _get(base + "/metrics")
         assert 'yfps_phonebook_fetch_age_seconds_by_ip{ip="127.0.0.1"} 0' in body
 
     def test_per_ip_map_bounded_to_10(self, server):
