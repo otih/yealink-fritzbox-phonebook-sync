@@ -7,11 +7,11 @@ vars; in Docker deployments the `.env` file drives everything.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `FB_HOST` | `fritz.box` | Fritzbox hostname or IP |
-| `FB_PORT` | `49000` | TR-064 port |
-| `FB_USER` | *(required)* | Fritzbox user with Heimnetz access |
-| `FB_PASSWORD` | *(required)* | Fritzbox user password |
-| `FB_PHONEBOOK_ID` | *(auto)* | Comma-separated phonebook IDs. Single = one entry; multiple = selectable list; empty = all |
+| `SYNC_FRITZBOX_HOST` | `fritz.box` | Fritzbox hostname or IP |
+| `SYNC_FRITZBOX_PORT` | `49000` | TR-064 port |
+| `SYNC_FRITZBOX_USER` | *(required)* | Fritzbox user with Heimnetz access |
+| `SYNC_FRITZBOX_PASSWORD` | *(required)* | Fritzbox user password |
+| `SYNC_FRITZBOX_PHONEBOOK_ID` | *(auto)* | Comma-separated phonebook IDs. Single = one entry; multiple = selectable list; empty = all |
 
 ## Server
 
@@ -19,7 +19,7 @@ vars; in Docker deployments the `.env` file drives everything.
 |----------|---------|-------------|
 | `SYNC_LISTEN_PORT` | `8080` | HTTP listen port |
 | `SYNC_REFRESH_INTERVAL` | `3600` | Seconds between Fritzbox syncs |
-| `SYNC_SERVER_URL` | *(required)* | URL the Yealink phone uses to reach this server — not `localhost` or `0.0.0.0` `SYNC_EXTERNAL_URL` is a legacy alias (pre-0.9.0 name) accepted as fallback when `SYNC_SERVER_URL` is unset. |
+| `SYNC_SERVER_URL` | *(required)* | URL the Yealink phone uses to reach this server — not `localhost` or `0.0.0.0` |
 
 ## Security
 

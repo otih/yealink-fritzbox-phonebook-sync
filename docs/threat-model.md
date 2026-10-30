@@ -10,7 +10,7 @@ The threat model for yealink-fritzbox-phonebook-sync, following
 | Asset | Confidentiality | Integrity | Availability |
 |-------|-----------------|-----------|--------------|
 | Phonebook data (names, numbers — personal data of contacts) | high | high | normal |
-| Fritzbox credentials (`FB_USER`/`FB_PASSWORD`) | high | high | normal |
+| Fritzbox credentials (`SYNC_FRITZBOX_USER`/`SYNC_FRITZBOX_PASSWORD`) | high | high | normal |
 | Phonebook HTTP credentials (`SYNC_AUTH_USER`/`SYNC_AUTH_PASSWORD`) | high | high | normal |
 | TLS private key (`SYNC_TLS_KEY`) | high | high | normal |
 | Service availability (the phone depends on it for its directory) | — | — | normal |

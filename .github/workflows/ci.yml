@@ -236,9 +236,9 @@ jobs:
         # configuration end-to-end.
         run: |
           docker run -d --rm \
-            -e FB_HOST=192.0.2.1 \
-            -e FB_USER=dummy \
-            -e FB_PASSWORD=dummy \
+            -e SYNC_FRITZBOX_HOST=192.0.2.1 \
+            -e SYNC_FRITZBOX_USER=dummy \
+            -e SYNC_FRITZBOX_PASSWORD=dummy \
             -e SYNC_SERVER_URL=http://127.0.0.1:8080 \
             -e SYNC_AUTH_USER=e2euser \
             -e SYNC_AUTH_PASSWORD=e2epass \
@@ -291,7 +291,7 @@ jobs:
         run: |
           set +e
           timeout 180 docker run --rm \
-            -e FB_HOST=192.0.2.1 -e FB_USER=dummy -e FB_PASSWORD=dummy \
+            -e SYNC_FRITZBOX_HOST=192.0.2.1 -e SYNC_FRITZBOX_USER=dummy -e SYNC_FRITZBOX_PASSWORD=dummy \
             --entrypoint python3 yfps-e2e:local \
             /app/yealink-fritzbox-phonebook-sync.py --check
           code=$?
@@ -325,8 +325,8 @@ jobs:
           chmod 666 /tmp/yfps-cache/phonebook-cache.json
 
           docker run -d --rm \
-            -e FB_HOST=192.0.2.1 \
-            -e FB_USER=dummy -e FB_PASSWORD=dummy \
+            -e SYNC_FRITZBOX_HOST=192.0.2.1 \
+            -e SYNC_FRITZBOX_USER=dummy -e SYNC_FRITZBOX_PASSWORD=dummy \
             -e SYNC_SERVER_URL=http://127.0.0.1:8080 \
             -e SYNC_AUTH_USER=e2euser -e SYNC_AUTH_PASSWORD=e2epass \
             -e SYNC_CACHE_DIR=/data \

@@ -4,7 +4,7 @@ Bug history: _raw_post hardcoded AF_INET6. On this author's network
 fritz.box resolves IPv6-only (Docker bridge has no IPv6 -> compose uses
 network_mode: host), so IPv6-first worked. But for ANYONE else:
 
-- FB_HOST as a plain IPv4 literal (192.168.179.1 — the Fritzbox LAN
+- SYNC_FRITZBOX_HOST as a plain IPv4 literal (192.168.179.1 — the Fritzbox LAN
   default on many setups) crashed with "Address family for hostname
   not supported" on EVERY sync attempt.
 - fritz.box in an IPv4-only network (no AAAA record) failed the same

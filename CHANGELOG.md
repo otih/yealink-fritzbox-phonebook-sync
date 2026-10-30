@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-30
+
+### Added
+
+- **Migration guide** (`docs/migration-v0.14.md`): rename table for
+  the v0.14.0 breaking env changes, what fail-fast behavior catches
+  a forgotten rename, and the `--check` one-shot verification.
+
+### Removed
+
+- **BREAKING: `FB_*` env vars renamed to `SYNC_FRITZBOX_*`** — one
+  configuration namespace since v0.14.0: `FB_HOST` →
+  `SYNC_FRITZBOX_HOST`, `FB_PORT` → `SYNC_FRITZBOX_PORT`, `FB_USER` →
+  `SYNC_FRITZBOX_USER`, `FB_PASSWORD` → `SYNC_FRITZBOX_PASSWORD`,
+  `FB_PHONEBOOK_ID` → `SYNC_FRITZBOX_PHONEBOOK_ID`. The old names
+  have NO effect anymore (negative test pins it). CLI flags are
+  unchanged (`--fritzbox-host` etc.); only the ENV names changed.
+  Migration: rename the five vars in your .env / compose / k8s env.
+- **BREAKING: `SYNC_EXTERNAL_URL` removed.** The pre-0.9.0 alias for
+  `SYNC_SERVER_URL` kept silently working as a fallback since the
+  rename — never officially documented, a trap for anyone reading an
+  old deployment's env. Removed in the v0.14.0 legacy cleanup; set
+  `SYNC_SERVER_URL` instead. A negative test pins that the alias is
+  dead (and that the canonical name still works).
+
 ## [0.13.4] - 2026-10-30
 
 ### Added
