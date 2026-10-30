@@ -19,7 +19,7 @@ vars; in Docker deployments the `.env` file drives everything.
 |----------|---------|-------------|
 | `SYNC_LISTEN_PORT` | `8080` | HTTP listen port |
 | `SYNC_REFRESH_INTERVAL` | `3600` | Seconds between Fritzbox syncs |
-| `SYNC_SERVER_URL` | *(required)* | URL the Yealink phone uses to reach this server — not `localhost` or `0.0.0.0` `SYNC_EXTERNAL_URL` is a legacy alias (pre-0.9.0 name) accepted as fallback when `SYNC_SERVER_URL` is unset. |
+| `SYNC_SERVER_URL` | *(required)* | URL the Yealink phone uses to reach this server — not `localhost` or `0.0.0.0` |
 
 ## Security
 

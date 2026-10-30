@@ -1571,7 +1571,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--server-url",
-        default=os.getenv("SYNC_SERVER_URL", os.getenv("SYNC_EXTERNAL_URL", "")),
+        default=os.getenv("SYNC_SERVER_URL", ""),
         help="External URL the Yealink phone uses to reach this server, e.g. http://192.168.1.50:8080",
     )
     p.add_argument(
