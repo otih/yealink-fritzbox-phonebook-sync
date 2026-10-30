@@ -208,44 +208,44 @@ class TestEscapeXml:
 
 class TestConvertSinglePhonebook:
     def test_returns_name_and_count(self):
-        name, _contacts, count = yfps.convert_single_phonebook(SAMPLE_PHONEBOOK)
+        name, _contacts, count, _ = yfps.convert_single_phonebook(SAMPLE_PHONEBOOK)
         assert name == "Testbook"
         assert count == 2  # Carol has no numbers, excluded
 
     def test_creates_directory_entry(self):
-        _, contacts, _ = yfps.convert_single_phonebook(SAMPLE_PHONEBOOK)
+        _, contacts, _, _ = yfps.convert_single_phonebook(SAMPLE_PHONEBOOK)
         assert "<DirectoryEntry>" in contacts
         assert "</YealinkIPPhoneDirectory>" in contacts
         assert contacts.startswith('<?xml version="1.0" encoding="UTF-8"?>')
 
     def test_multiple_numbers_per_contact(self):
-        _, contacts, _ = yfps.convert_single_phonebook(SAMPLE_PHONEBOOK)
+        _, contacts, _, _ = yfps.convert_single_phonebook(SAMPLE_PHONEBOOK)
         assert contacts.count("<Telephone") == 3  # Alice: 2, Bob: 1
 
     def test_type_labels_mapped(self):
-        _, contacts, _ = yfps.convert_single_phonebook(SAMPLE_PHONEBOOK)
+        _, contacts, _, _ = yfps.convert_single_phonebook(SAMPLE_PHONEBOOK)
         assert '<Telephone label="Mobil">' in contacts
         assert '<Telephone label="Festnetz">' in contacts
         assert '<Telephone label="Arbeit">' in contacts
 
     def test_internal_numbers_filtered(self):
-        _, contacts, count = yfps.convert_single_phonebook(SAMPLE_PHONEBOOK)
+        _, contacts, count, _ = yfps.convert_single_phonebook(SAMPLE_PHONEBOOK)
         assert "**" not in contacts
         assert count == 2  # Bob kept (has work number), but **9 is gone
 
     def test_contact_without_numbers_excluded(self):
-        _, contacts, _ = yfps.convert_single_phonebook(SAMPLE_PHONEBOOK)
+        _, contacts, _, _ = yfps.convert_single_phonebook(SAMPLE_PHONEBOOK)
         assert "Carol" not in contacts
 
     def test_xml_escaping_in_names(self):
         # Input XML must be well-formed — special chars come pre-escaped
         # (as the Fritzbox delivers them). Verify they stay escaped in output.
         raw = SAMPLE_PHONEBOOK.replace(b"Alice Example", b"Alice &amp; M&#246;ller")
-        _, contacts, _ = yfps.convert_single_phonebook(raw)
+        _, contacts, _, _ = yfps.convert_single_phonebook(raw)
         assert "Alice &amp; M\u00f6ller" in contacts
 
     def test_only_internal_numbers_yields_empty(self):
-        _, contacts, count = yfps.convert_single_phonebook(EMPTY_PHONEBOOK)
+        _, contacts, count, _ = yfps.convert_single_phonebook(EMPTY_PHONEBOOK)
         assert count == 0
         assert "<DirectoryEntry>" not in contacts
 
@@ -259,7 +259,7 @@ class TestSortContacts:
     def test_contacts_sorted_alphabetically(self):
         # Document order: Zorro, Ärger, alfred, Bob.
         # Expected (folded keys): alfred < ärger(arger) < bob < zorro.
-        _, contacts, count = yfps.convert_single_phonebook(SORT_PHONEBOOK)
+        _, contacts, count, _ = yfps.convert_single_phonebook(SORT_PHONEBOOK)
         assert count == 4
         pos_ae = contacts.find("rger Beispiel")  # Ärger
         pos_alfred = contacts.find("alfred example")
@@ -270,12 +270,12 @@ class TestSortContacts:
 
     def test_sort_case_insensitive(self):
         # alfred (lowercase) must not sort behind Zorro
-        _, contacts, _ = yfps.convert_single_phonebook(SORT_PHONEBOOK)
+        _, contacts, _, _ = yfps.convert_single_phonebook(SORT_PHONEBOOK)
         assert contacts.find("alfred example") < contacts.find("Zorro Example")
 
     def test_sort_umlaut_german_collation(self):
         # Ä sorts as A — before B(ob), not after Z
-        _, contacts, _ = yfps.convert_single_phonebook(SORT_PHONEBOOK)
+        _, contacts, _, _ = yfps.convert_single_phonebook(SORT_PHONEBOOK)
         assert contacts.find("rger Beispiel") < contacts.find("Bob Beispiel")
 
 
@@ -291,7 +291,7 @@ class TestDedupContacts:
 
     def test_duplicate_contact_merged_when_enabled(self):
         # Same name twice → one DirectoryEntry with both numbers
-        _, contacts, count = yfps.convert_single_phonebook(
+        _, contacts, count, _ = yfps.convert_single_phonebook(
             DUPLICATE_CONTACT_PHONEBOOK, dedup_contacts=True
         )
         assert count == 2  # Dup Name (merged) + Other Name
@@ -301,7 +301,7 @@ class TestDedupContacts:
         assert "+49897770002" in contacts
 
     def test_duplicate_contact_numbers_combined_when_enabled(self):
-        _, contacts, _ = yfps.convert_single_phonebook(
+        _, contacts, _, _ = yfps.convert_single_phonebook(
             DUPLICATE_CONTACT_PHONEBOOK, dedup_contacts=True
         )
         dup_block = contacts[contacts.find("Dup Name") : contacts.find("Other Name")]
@@ -309,7 +309,7 @@ class TestDedupContacts:
 
     def test_duplicate_contact_kept_separate_by_default(self):
         # Default OFF: same-name contacts stay separate entries
-        _, contacts, count = yfps.convert_single_phonebook(DUPLICATE_CONTACT_PHONEBOOK)
+        _, contacts, count, _ = yfps.convert_single_phonebook(DUPLICATE_CONTACT_PHONEBOOK)
         assert count == 3  # Dup Name, Other Name, Dup Name again
         assert contacts.count("Dup Name") == 2
         assert "+491707770001" in contacts
@@ -318,14 +318,14 @@ class TestDedupContacts:
     def test_duplicate_number_within_contact_kept_by_default(self):
         # Default OFF: the same number twice in ONE contact stays twice —
         # exact pre-0.8.0 behavior
-        _, contacts, count = yfps.convert_single_phonebook(DUPLICATE_NUMBER_PHONEBOOK)
+        _, contacts, count, _ = yfps.convert_single_phonebook(DUPLICATE_NUMBER_PHONEBOOK)
         assert count == 1
         assert contacts.count("<Telephone") == 2  # both occurrences kept
         assert contacts.count("+491708880001") == 2
 
     def test_duplicate_number_within_contact_deduped_when_enabled(self):
         # Same number twice in one contact (different types) → one element
-        _, contacts, count = yfps.convert_single_phonebook(
+        _, contacts, count, _ = yfps.convert_single_phonebook(
             DUPLICATE_NUMBER_PHONEBOOK, dedup_contacts=True
         )
         assert count == 1
@@ -334,19 +334,21 @@ class TestDedupContacts:
 
     def test_label_resolved_on_duplicate_number_when_enabled(self):
         # First occurrence unlabeled, second labeled 'mobile' → label wins
-        _, contacts, _ = yfps.convert_single_phonebook(LABEL_RESOLVED_ON_DUP, dedup_contacts=True)
+        _, contacts, _, _ = yfps.convert_single_phonebook(
+            LABEL_RESOLVED_ON_DUP, dedup_contacts=True
+        )
         assert contacts.count("<Telephone") == 1
         assert '<Telephone label="Mobil">+491709990001</Telephone>' in contacts
 
     def test_unlabeled_duplicate_numbers_kept_when_disabled(self):
         # Default OFF: no label resolution happens — both raw entries stay
-        _, contacts, _ = yfps.convert_single_phonebook(LABEL_RESOLVED_ON_DUP)
+        _, contacts, _, _ = yfps.convert_single_phonebook(LABEL_RESOLVED_ON_DUP)
         assert contacts.count("<Telephone") == 2
         assert '<Telephone label="Mobil">+491709990001</Telephone>' in contacts
 
     def test_dedup_scoped_to_single_phonebook_when_enabled(self):
         # Same contact name in TWO <phonebook> elements → NOT merged
-        _, contacts, count = yfps.convert_single_phonebook(
+        _, contacts, count, _ = yfps.convert_single_phonebook(
             TWO_PHONEBOOKS_SAME_CONTACT, dedup_contacts=True
         )
         assert count == 2
@@ -356,7 +358,7 @@ class TestDedupContacts:
 
     def test_sorting_stays_active_when_dedup_disabled(self):
         # Sorting is always on, independent of the dedup setting
-        _, contacts, count = yfps.convert_single_phonebook(SORT_PHONEBOOK)
+        _, contacts, count, _ = yfps.convert_single_phonebook(SORT_PHONEBOOK)
         assert count == 4
         assert contacts.find("alfred example") < contacts.find("Zorro Example")
 

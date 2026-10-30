@@ -46,8 +46,8 @@ class TestBuildAllXml:
     def test_merges_all_phonebooks_into_one_directory(self):
         _set_state({1: "A-xml", 2: "B-xml"})
         # Feed the REAL converted XML through the merger
-        _, xml_a, _ = yfps.convert_single_phonebook(PB_A)
-        _, xml_b, _ = yfps.convert_single_phonebook(PB_B)
+        _, xml_a, _, _ = yfps.convert_single_phonebook(PB_A)
+        _, xml_b, _, _ = yfps.convert_single_phonebook(PB_B)
         _set_state({1: xml_a, 2: xml_b})
         out = yfps.build_all_xml()
         assert out.startswith('<?xml version="1.0" encoding="UTF-8"?>')
@@ -55,8 +55,8 @@ class TestBuildAllXml:
         assert "Zorro" in out and "Berta" in out and "Anna" in out
 
     def test_sorted_across_phonebooks(self):
-        _, xml_a, _ = yfps.convert_single_phonebook(PB_A)
-        _, xml_b, _ = yfps.convert_single_phonebook(PB_B)
+        _, xml_a, _, _ = yfps.convert_single_phonebook(PB_A)
+        _, xml_b, _, _ = yfps.convert_single_phonebook(PB_B)
         _set_state({1: xml_a, 2: xml_b})
         out = yfps.build_all_xml()
         pos_anna1 = out.find("Anna")
@@ -66,8 +66,8 @@ class TestBuildAllXml:
 
     def test_cross_phonebook_same_name_kept_separate(self):
         # Dedup is scoped per phonebook — the two Annas both stay
-        _, xml_a, _ = yfps.convert_single_phonebook(PB_A)
-        _, xml_b, _ = yfps.convert_single_phonebook(PB_B)
+        _, xml_a, _, _ = yfps.convert_single_phonebook(PB_A)
+        _, xml_b, _, _ = yfps.convert_single_phonebook(PB_B)
         _set_state({1: xml_a, 2: xml_b})
         out = yfps.build_all_xml()
         assert out.count("<Name>Anna</Name>") == 2

@@ -70,7 +70,7 @@ logger = logging.getLogger("fritz-pb-sync")
 # App version: the single source of truth for humans (startup log),
 # the /metrics endpoint (yfps_build_info) and the release process.
 # Bump on every release (keep in sync with CHANGELOG.md and git tags).
-APP_VERSION = "0.14.0"
+APP_VERSION = "0.15.0"
 
 
 class _RateLimiter:
@@ -689,11 +689,13 @@ def _render_directory_entries(entries: list[tuple[str, list[tuple[str, str]]]]) 
 
 def convert_single_phonebook(
     fritzbox_xml_bytes: bytes, dedup_contacts: bool = False
-) -> tuple[str, str, int]:
+) -> tuple[str, str, int, list[tuple[str, list[tuple[str, str]]]]]:
     """
     Convert a single Fritzbox phonebook XML to Yealink DirectoryEntry format.
 
-    Returns (phonebook_name, contacts_xml_str, contact_count).
+    Returns (phonebook_name, contacts_xml_str, contact_count, structured)
+    where structured is [(name, [(number, label), ...]), ...] — the
+    parsed entries, source of truth for the v2 cache.
     Uses the YealinkIPPhoneDirectory format documented for the AX83H.
     Each <Telephone> gets a label attribute mapped from the Fritzbox number type.
     Internal Fritzbox numbers (**9, **600, etc.) are filtered out.
@@ -710,6 +712,7 @@ def convert_single_phonebook(
     umlaut-folded) — the phone shows a sorted directory, not Fritzbox
     delivery order.
     """
+    structured_all: list[tuple[str, list[tuple[str, str]]]] = []
     root = ET.fromstring(fritzbox_xml_bytes)
 
     # Extract phonebook name from the <phonebook name="..."> attribute
@@ -753,10 +756,11 @@ def convert_single_phonebook(
         book_lines = _render_directory_entries(entries)
         lines.extend(book_lines)
         count += len(entries)
+        structured_all.extend(entries)
 
     lines.append("</YealinkIPPhoneDirectory>")
     contacts_str = "\n".join(lines)
-    return pb_name, contacts_str, count
+    return pb_name, contacts_str, count, structured_all
 
 
 def build_menu_xml(phonebooks: list[dict[str, object]], server_base: str) -> str:
@@ -883,6 +887,9 @@ class State:
         self.phone_fetches = 0
         self.last_phone_fetch: float = 0.0
         self.phone_fetch_ips: dict[str, float] = {}
+        # v2 cache source of truth: parsed contacts per book,
+        # {phonebook_id: [(name, [(number, label), ...]), ...]}
+        self.structured_books: dict[int, list[tuple[str, list[tuple[str, str]]]]] = {}
         # Phone-side activity comments live with the annotated fields above;
         # mypy --strict required explicit types (dict[str, float], float
         # timestamps) — the previous implicit int 0 defaults type-mismatched
@@ -929,9 +936,17 @@ def _save_cache(directory: str) -> None:
         return
     os.makedirs(directory, exist_ok=True)
     with state.lock:
+        # v2: phonebooks as STRUCTURE (name + number/label pairs), no
+        # rendered XML. The restore path re-renders with the CURRENT
+        # external URL — v1 caches carried the OLD embedded credentials
+        # across config changes (phone got stale auth after a restart
+        # while the Fritzbox was unreachable). Full JSON, zero escapes.
         payload = {
-            "menu_xml": state.menu_xml,
-            "contacts": {str(pid): xml for pid, xml in state.contacts.items()},
+            "version": 2,
+            "books": {
+                str(pid): [[name, [[n, lbl] for n, lbl in numbers]] for name, numbers in entries]
+                for pid, entries in state.structured_books.items()
+            },
             "pb_meta": state.pb_meta,
             "last_sync": state.last_sync,
             "total_contacts": state.total_contacts,
@@ -950,7 +965,7 @@ def _save_cache(directory: str) -> None:
         logger.warning("Could not write phonebook cache to %s", path)
 
 
-def _load_cache(directory: str) -> bool:
+def _load_cache(directory: str, external_url: str = "") -> bool:
     """Restore the phonebook state from a previous snapshot.
 
     Returns True when a valid snapshot was loaded, False otherwise (no
@@ -972,11 +987,32 @@ def _load_cache(directory: str) -> bool:
         return False
     try:
         with state.lock:
-            state.menu_xml = str(data["menu_xml"])
-            state.contacts = {int(pid): xml for pid, xml in data["contacts"].items()}
             state.pb_meta = list(data["pb_meta"])
             state.last_sync = float(data["last_sync"])
             state.total_contacts = int(data["total_contacts"])
+            if data.get("version") == 2:
+                # v2: books as structure — re-render menu and contacts
+                # with the CURRENT external URL (credential fix). Same
+                # renderer as the live sync: byte-identical output.
+                books = {}
+                for pid_s, entries in data["books"].items():
+                    books[int(pid_s)] = [
+                        (str(name), [(str(n), str(lbl)) for n, lbl in numbers])
+                        for name, numbers in entries
+                    ]
+                state.structured_books = books
+                state.contacts = {
+                    pid: "\n".join(_render_directory_entries(entries))
+                    for pid, entries in books.items()
+                }
+                state.menu_xml = build_menu_xml(list(state.pb_meta), external_url)
+            else:
+                # v1 (pre-0.15.0): rendered XML strings. Still loadable —
+                # a v1 snapshot must not lose restart resilience. The
+                # next successful sync overwrites the cache as v2.
+                state.menu_xml = str(data["menu_xml"])
+                state.contacts = {int(pid): xml for pid, xml in data["contacts"].items()}
+                state.structured_books = {}
     except (KeyError, TypeError, ValueError) as exc:
         logger.warning("Ignoring invalid phonebook cache %s (%s)", path, exc)
         return False
@@ -1403,10 +1439,12 @@ def sync_once(
     contacts_map = {}
     total = 0
 
+    structured_map: dict[int, list[tuple[str, list[tuple[str, str]]]]] = {}
     for pid in phonebook_ids:
         raw = client.fetch_phonebook(pid)
-        pb_name, contacts_xml, count = convert_single_phonebook(raw, dedup_contacts)
+        pb_name, contacts_xml, count, structured = convert_single_phonebook(raw, dedup_contacts)
         contacts_map[pid] = contacts_xml
+        structured_map[pid] = structured
         pb_meta.append({"id": pid, "name": pb_name, "count": count})
         total += count
         logger.info("Phonebook %d '%s': %d contacts", pid, pb_name, count)
@@ -1416,6 +1454,7 @@ def sync_once(
     with state.lock:
         state.menu_xml = menu
         state.contacts = contacts_map
+        state.structured_books = structured_map
         state.pb_meta = pb_meta
         state.last_sync = time.time()
         state.total_contacts = total
@@ -1518,7 +1557,7 @@ def _run_check(client: FritzboxClient, phonebook_id_arg: str) -> int:
     for pid in check_ids:
         try:
             raw = client.fetch_phonebook(pid)
-            name, _xml, count = convert_single_phonebook(raw, dedup_contacts)
+            name, _xml, count, _structured = convert_single_phonebook(raw, dedup_contacts)
             if count:
                 print("OK: phonebook %d '%s': %d contact(s)" % (pid, name, count))
             else:
@@ -1643,7 +1682,7 @@ def _resolve_phonebook_ids(phonebook_id_arg: str) -> list[int]:
     return []
 
 
-def _init_cache(cache_dir_arg: str) -> None:
+def _init_cache(cache_dir_arg: str, external_url: str = "") -> None:
     """Set the global cache dir, restore the last snapshot if present.
 
     Fail fast when the cache directory cannot be created — a silently
@@ -1658,7 +1697,7 @@ def _init_cache(cache_dir_arg: str) -> None:
     except OSError as exc:
         logger.error("Cannot create cache directory %s: %s", cache_dir, exc)
         sys.exit(1)
-    if _load_cache(cache_dir):
+    if _load_cache(cache_dir, external_url):
         logger.info("Serving cached phonebook until the next successful sync")
 
 
@@ -1807,7 +1846,7 @@ def main() -> None:
     if dedup_contacts:
         logger.info("Contact dedup enabled: same-name contacts within one phonebook are merged")
 
-    _init_cache(args.cache_dir)
+    _init_cache(args.cache_dir, external_url)
 
     # No synchronous initial sync here: sync_once reaches the network and
     # must never delay the HTTP server start (the comment above this block
