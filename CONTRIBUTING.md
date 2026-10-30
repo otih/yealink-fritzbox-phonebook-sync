@@ -25,6 +25,7 @@ Both tools install with `pip install ruff pytest`.
 
 ## Ground rules
 
+0. **Optional but recommended: pre-commit hooks.** `pip install pre-commit && pre-commit install` wires the SAME gates CI runs (ruff check+format, mypy --strict, see .pre-commit-config.yaml) into your local commits — you see problems in seconds instead of in a red push.
 1. **Security scan is a CI gate.** ruff's `S` (bandit) rules run on every
    push as part of the lint job — the manual pre-commit scan was discipline,
    not enforcement. If a finding must stay, document the acceptance in the
