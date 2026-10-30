@@ -10,6 +10,13 @@ select = [
     "I",   # isort
     "B",   # flake8-bugbear
     "UP",  # pyupgrade
+    "C901", # complexity gate: max 10 branches/function — the five former
+           # hotspots (26/19/15/12/11) were refactored below it in this PR;
+           # new runaway functions fail CI instead of rotting silently
+    "SIM",  # code simplification (flake8-simplify)
+    "C4",   # comprehension hygiene (flake8-comprehensions)
+    "PERF", # performance anti-patterns (perflint) — deliberate cases carry per-line noqa with rationale
+    "RUF",  # ruff-specific rules (unused noqa, unused unpacked vars, ...)
     "S",   # flake8-bandit security checks — GATED IN CI since v0.13.3:
            # the project rule demanded a security scan before every
            # commit, but it relied on discipline. Now every push runs

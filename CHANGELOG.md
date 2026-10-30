@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Lint gates from v0.13.3 are actually active now.** The PR #77
+  squash lost the pyproject `select` entries for `SIM`/`C4`/`PERF`/
+  `RUF` (the findings had been fixed against a manual
+  `--select SIM,C4,PERF,RUF` run, but the config change never
+  landed — CI silently kept running without them). All four (plus
+  the new C901) are in the selection now and the full gate is
+  verified green.
+
+### Changed
+
+- **Complexity gate (C901, max 10) + hotspots refactored below it.**
+  The five functions over the threshold — `convert_single_phonebook`
+  (26!), `main` (19), `do_GET` (15), `build_all_xml` (12),
+  `_raw_post` (11) — were decomposed into single-purpose helpers.
+  Behavior identical: 159 tests + branch coverage green, mypy
+  --strict green.
+
 ## [0.13.3] - 2026-10-30
 
 ### Changed
