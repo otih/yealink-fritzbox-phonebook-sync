@@ -12,6 +12,7 @@ theme:
 nav:
   - Overview: index.md
   - Configuration: configuration.md
+  - Migration to v0.14.0: migration-v0.14.md
   - Metrics & Alerting: metrics.md
   - Troubleshooting: troubleshooting.md
   - Auto-Provisioning: provisioning.md

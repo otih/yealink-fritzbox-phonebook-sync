@@ -72,6 +72,13 @@ Related approaches, for fairness:
 If your setup matches the niche above and you want a zero-dependency,
 single-file, container-first tool with monitoring built in — read on.
 
+## Upgrading from v0.13.x
+
+v0.14.0 renamed the Fritzbox env vars (`FB_HOST` → `SYNC_FRITZBOX_HOST`,
+…) and removed the dead `SYNC_EXTERNAL_URL` alias. Rename the variables
+in your env file before upgrading — see [docs/migration-v0.14.md](docs/migration-v0.14.md)
+for the full table and what happens if you forget one.
+
 ## Quick start
 
 ### Option A: Docker (recommended)
