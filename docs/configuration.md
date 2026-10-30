@@ -43,7 +43,13 @@ automatically into the Menu.xml URLs it serves.
 When set, the server persists the phonebook state after every
 successful Fritzbox sync as a JSON snapshot (`phonebook-cache.json`,
 created with `0600` permissions, written atomically) and restores it on
-startup. This bridges container restarts while the Fritzbox is
+startup. Since v0.15.0 the snapshot is **structured JSON** (format
+version 2): phonebooks stored as contact structures (name +
+number/label pairs), not rendered XML — the file is readable as-is,
+and the restore re-renders menu.xml and contacts with the *current*
+server URL, so credential or URL changes survive restarts. Caches
+written by v0.14.x still load; the next successful sync rewrites
+them in the new format. This bridges container restarts while the Fritzbox is
 unreachable: instead of the "Noch nicht synchronisiert" placeholder the
 phone gets the last known good phonebook, and the next successful sync
 overwrites the snapshot. A corrupt or unreadable snapshot is logged and
