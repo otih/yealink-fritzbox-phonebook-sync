@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`SYNC_EXTERNAL_URL` documented:** the legacy alias (pre-0.9.0
+  name) has been accepted as a fallback for `SYNC_SERVER_URL` all
+  along, but no doc mentioned it — anyone migrating an old
+  deployment had to read the source. Now noted in .env.example and
+  docs/configuration.md.
 - **Error-path tests for the previously untested failure branches**
   (8 new tests): raw HTTP response parser contracts (empty response,
   missing separator, malformed status line, non-numeric status), the
