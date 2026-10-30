@@ -89,7 +89,11 @@ jobs:
         # Gate ratchets upward as coverage grows: 45% (start) -> 60%
         # (negative tests, v0.10.1) -> 70% (FritzboxClient mock-socket
         # rig, actual: 76%). It can only go up.
-        run: pytest tests/ -v --cov=yealink_fritzbox_phonebook_sync --cov-report=term --cov-fail-under=70
+        # --cov-branch: measures taken branches, not just executed lines —
+        # a line that ran with BOTH its if and else untested still counts
+        # as covered by line coverage; branch coverage does not lie.
+        # Current: 78% branch (gate 70).
+        run: pytest tests/ -v --cov=yealink_fritzbox_phonebook_sync --cov-branch --cov-report=term --cov-fail-under=70
 
   docker:
     name: Docker build & push
