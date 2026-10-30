@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Cache format v2 — full JSON, no XML-in-JSON.** The on-disk cache
+  stored the RENDERED XML strings (menu.xml + per-book contacts) as
+  JSON string values: escape soup (\n, \"), unreadable, and a hidden
+  credential bug — the cached menu embedded the OLD auth credentials,
+  so a config change plus restart-while-unreachable served the phone
+  stale credentials. v2 stores phonebooks as STRUCTURE
+  (name + number/label pairs); restore re-renders menu.xml and
+  contacts through the SAME renderer the live sync uses, with the
+  CURRENT external URL. Verified: no XML tokens, no escaped quotes in
+  the file; byte-identical serving after restore. v1 caches still
+  load (one release of backward compatibility); the next successful
+  sync rewrites them as v2.
+
 ## [0.14.0] - 2026-10-30
 
 ### Added
