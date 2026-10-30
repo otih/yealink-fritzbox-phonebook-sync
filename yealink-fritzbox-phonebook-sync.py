@@ -321,6 +321,43 @@ def _resolve_host(host: str) -> tuple[int, tuple[str, int]]:
     return int(family), (str(host_addr), int(port))
 
 
+def _parse_http_response(raw: bytes) -> dict[str, object]:
+    """Parse a raw HTTP/1.x response into {status, headers, body}.
+
+    Raises RuntimeError on malformed input (no separator, bad status
+    line, non-numeric status) — the pre-refactor error contracts.
+    """
+    if not raw:
+        raise RuntimeError("Empty response from Fritzbox")
+
+    sep = raw.find(b"\r\n\r\n")
+    if sep == -1:
+        raise RuntimeError(
+            "Malformed HTTP response (no header/body separator): %s"
+            % raw[:120].decode("utf-8", errors="replace")
+        )
+
+    header_block = raw[:sep].decode("utf-8", errors="replace")
+    resp_body = raw[sep + 4 :].decode("utf-8", errors="replace")
+
+    status_line, _, header_rest = header_block.partition("\r\n")
+    parts = status_line.split()
+    if len(parts) < 2:
+        raise RuntimeError("Malformed status line: %s" % status_line)
+    try:
+        status = int(parts[1])
+    except ValueError:
+        raise RuntimeError("Non-numeric HTTP status: %s" % parts[1]) from None
+
+    resp_headers: dict[str, str] = {}
+    for line in header_rest.split("\r\n"):
+        if ":" in line:
+            k, _, v = line.partition(":")
+            resp_headers[k.strip()] = v.strip()
+
+    return {"status": status, "headers": resp_headers, "body": resp_body}
+
+
 class FritzboxClient:
     """Minimal TR-064 SOAP client for phonebook retrieval."""
 
@@ -482,37 +519,7 @@ class FritzboxClient:
         finally:
             sock.close()
 
-        raw = b"".join(chunks)
-        if not raw:
-            raise RuntimeError("Empty response from Fritzbox")
-
-        # Split headers/body
-        sep = raw.find(b"\r\n\r\n")
-        if sep == -1:
-            raise RuntimeError(
-                "Malformed HTTP response (no header/body separator): %s"
-                % raw[:120].decode("utf-8", errors="replace")
-            )
-
-        header_block = raw[:sep].decode("utf-8", errors="replace")
-        resp_body = raw[sep + 4 :].decode("utf-8", errors="replace")
-
-        status_line, _, header_rest = header_block.partition("\r\n")
-        parts = status_line.split()
-        if len(parts) < 2:
-            raise RuntimeError("Malformed status line: %s" % status_line)
-        try:
-            status = int(parts[1])
-        except ValueError:
-            raise RuntimeError("Non-numeric HTTP status: %s" % parts[1]) from None
-
-        resp_headers = {}
-        for line in header_rest.split("\r\n"):
-            if ":" in line:
-                k, _, v = line.partition(":")
-                resp_headers[k.strip()] = v.strip()
-
-        return {"status": status, "headers": resp_headers, "body": resp_body}
+        return _parse_http_response(b"".join(chunks))
 
     def get_phonebook_ids(self) -> list[int]:
         """Return list of phonebook IDs available on the Fritzbox."""
@@ -605,6 +612,81 @@ def _extract_numbers(numbers_elem: ET.Element) -> list[tuple[str, str]]:
     return numbers
 
 
+def _find_child(elem: ET.Element, *tags: str) -> ET.Element | None:
+    """First direct child whose stripped tag is in `tags`, else None."""
+    for child in elem:
+        if _strip_ns(child.tag) in tags:
+            return child
+    return None
+
+
+def _extract_contact(contact: ET.Element) -> tuple[str, list[tuple[str, str]]] | None:
+    """(name, numbers) of a <contact>, or None if it has no usable name/numbers.
+
+    A contact needs a <person><realName> and a <numbers>/<telephony> element
+    with at least one usable number — everything else is skipped exactly as
+    before the refactor (behavior-preserving extraction).
+    """
+    person = _find_child(contact, "person")
+    if person is None:
+        return None
+    real_name = _find_child(person, "realName")
+    if real_name is None:
+        return None
+    name = (real_name.text or "").strip()
+    if not name:
+        return None
+    numbers_elem = _find_child(contact, "numbers", "telephony")
+    if numbers_elem is None:
+        return None
+    numbers = _extract_numbers(numbers_elem)
+    if not numbers:
+        return None
+    return name, numbers
+
+
+def _merge_contact_into(
+    merged: dict[str, tuple[str, list[tuple[str, str]]]], name: str, numbers: list[tuple[str, str]]
+) -> None:
+    """Fold one contact into the dedup map (same folded name merges).
+
+    Duplicate numbers collapse to a single <Telephone>, first non-empty
+    label wins — the pre-refactor merge semantics, scoped to one map
+    (i.e. one <phonebook> element).
+    """
+    key = _sort_key(name)
+    if key not in merged:
+        merged[key] = (name, [])
+    entry = merged[key]
+    existing = entry[1]
+    for num, label in numbers:
+        for i, (enum, elabel) in enumerate(existing):
+            if enum == num:
+                if not elabel and label:
+                    existing[i] = (enum, label)
+                break
+        else:
+            existing.append((num, label))
+
+
+def _render_directory_entries(entries: list[tuple[str, list[tuple[str, str]]]]) -> list[str]:
+    """XML lines for one phonebook's sorted entries."""
+    lines: list[str] = []
+    for display_name, numbers in entries:
+        lines.append("  <DirectoryEntry>")
+        lines.append("    <Name>%s</Name>" % _escape_xml(display_name))
+        for num, label in numbers:
+            if label:
+                lines.append(
+                    '    <Telephone label="%s">%s</Telephone>'
+                    % (_escape_xml(label), _escape_xml(num))
+                )
+            else:
+                lines.append("    <Telephone>%s</Telephone>" % _escape_xml(num))
+        lines.append("  </DirectoryEntry>")
+    return lines
+
+
 def convert_single_phonebook(
     fritzbox_xml_bytes: bytes, dedup_contacts: bool = False
 ) -> tuple[str, str, int]:
@@ -645,65 +727,21 @@ def convert_single_phonebook(
             continue
         # Dedup map is scoped to ONE phonebook element: the same name in
         # two different <phonebook> blocks must remain separate entries.
-        # key → [display_name, [(number, label), ...]]
+        # key → (display_name, [(number, label), ...])
         merged: dict[str, tuple[str, list[tuple[str, str]]]] = {}
         passthrough: list[tuple[str, list[tuple[str, str]]]] = []
         for contact in phonebook:
             if _strip_ns(contact.tag) != "contact":
                 continue
-
-            # Extract name
-            person = None
-            for child in contact:
-                if _strip_ns(child.tag) == "person":
-                    person = child
-                    break
-            if person is None:
+            extracted = _extract_contact(contact)
+            if extracted is None:
                 continue
-            name = None
-            for child in person:
-                if _strip_ns(child.tag) == "realName":
-                    name = (child.text or "").strip()
-                    break
-            if not name:
-                continue
-
-            # Extract numbers — Fritzbox uses <telephony><number>,
-            # older firmwares used <numbers><number>
-            numbers_elem = None
-            for child in contact:
-                if _strip_ns(child.tag) in ("numbers", "telephony"):
-                    numbers_elem = child
-                    break
-            if numbers_elem is None:
-                continue
-
-            numbers = _extract_numbers(numbers_elem)
-
-            if not numbers:
-                continue
-
+            name, numbers = extracted
             if not dedup_contacts:
                 # Pass through as delivered (pre-0.8.0 semantics)
                 passthrough.append((name, numbers))
                 continue
-
-            # Merge contacts sharing the same folded name (within this
-            # phonebook): numbers are combined, duplicate numbers collapse
-            # to one <Telephone> keeping the first non-empty label.
-            key = _sort_key(name)
-            if key not in merged:
-                merged[key] = (name, [])
-            entry = merged[key]
-            existing = entry[1]
-            for num, label in numbers:
-                for i, (enum, elabel) in enumerate(existing):
-                    if enum == num:
-                        if not elabel and label:
-                            existing[i] = (enum, label)
-                        break
-                else:
-                    existing.append((num, label))
+            _merge_contact_into(merged, name, numbers)
 
         # Emit sorted by folded name — case-insensitive, umlaut-aware.
         # Display names keep their original casing ("Zorro", not "zorro").
@@ -712,19 +750,9 @@ def convert_single_phonebook(
             if dedup_contacts
             else sorted(passthrough, key=lambda e: _sort_key(e[0]))
         )
-        for display_name, numbers in entries:
-            lines.append("  <DirectoryEntry>")
-            lines.append("    <Name>%s</Name>" % _escape_xml(display_name))
-            for num, label in numbers:
-                if label:
-                    lines.append(
-                        '    <Telephone label="%s">%s</Telephone>'
-                        % (_escape_xml(label), _escape_xml(num))
-                    )
-                else:
-                    lines.append("    <Telephone>%s</Telephone>" % _escape_xml(num))
-            lines.append("  </DirectoryEntry>")
-            count += 1
+        book_lines = _render_directory_entries(entries)
+        lines.extend(book_lines)
+        count += len(entries)
 
     lines.append("</YealinkIPPhoneDirectory>")
     contacts_str = "\n".join(lines)
@@ -767,23 +795,13 @@ def build_menu_xml(phonebooks: list[dict[str, object]], server_base: str) -> str
     return "\n".join(lines) + "\n"
 
 
-def build_all_xml() -> str:
-    """
-    Build ONE combined YealinkIPPhoneDirectory from all served phonebooks.
+def _collect_all_entries(contacts: dict[int, str]) -> list[tuple[str, ET.Element]]:
+    """(sort_key, entry) pairs re-parsed from converted per-book XML.
 
-    Target: phones with a single remote-phonebook slot (parts of the T
-    series) where the menu drill-in is not usable — /all.xml gives them
-    one flat directory. Entries are re-parsed from the already-converted
-    per-phonebook XML (so normalization, dedup-scoping and labels are
-    exactly what /contacts/<id>.xml serves) and sorted alphabetically
-    (case-insensitive, umlaut-folding — same key as the converter).
-
-    Cross-phonebook duplicates are intentionally NOT merged: dedup is
-    scoped to one phonebook by design; this endpoint only concatenates.
+    Unparseable books are skipped with a warning — a corrupt cache must
+    not take /all.xml down (pre-refactor behavior).
     """
     entries: list[tuple[str, ET.Element]] = []
-    with state.lock:
-        contacts = dict(state.contacts)
     for xml_str in contacts.values():
         try:
             root = ET.fromstring(xml_str)
@@ -798,26 +816,52 @@ def build_all_xml() -> str:
                         name = (child.text or "").strip()
                         break
                 entries.append((_sort_key(name), entry))
+    return entries
+
+
+def _render_all_entry(entry: ET.Element) -> list[str]:
+    """XML lines for one entry in the combined /all.xml directory."""
+    lines: list[str] = ["  <DirectoryEntry>"]
+    for child in entry:
+        tag = _strip_ns(child.tag)
+        if tag == "Name":
+            lines.append("    <Name>%s</Name>" % _escape_xml((child.text or "").strip()))
+        elif tag == "Telephone":
+            label = child.get("label")
+            if label:
+                lines.append(
+                    '    <Telephone label="%s">%s</Telephone>'
+                    % (_escape_xml(label), _escape_xml((child.text or "").strip()))
+                )
+            else:
+                lines.append(
+                    "    <Telephone>%s</Telephone>" % _escape_xml((child.text or "").strip())
+                )
+    lines.append("  </DirectoryEntry>")
+    return lines
+
+
+def build_all_xml() -> str:
+    """
+    Build ONE combined YealinkIPPhoneDirectory from all served phonebooks.
+
+    Target: phones with a single remote-phonebook slot (parts of the T
+    series) where the menu drill-in is not usable — /all.xml gives them
+    one flat directory. Entries are re-parsed from the already-converted
+    per-phonebook XML (so normalization, dedup-scoping and labels are
+    exactly what /contacts/<id>.xml serves) and sorted alphabetically
+    (case-insensitive, umlaut-folding — same key as the converter).
+
+    Cross-phonebook duplicates are intentionally NOT merged: dedup is
+    scoped to one phonebook by design; this endpoint only concatenates.
+    """
+    with state.lock:
+        contacts = dict(state.contacts)
+    entries = _collect_all_entries(contacts)
 
     lines = ['<?xml version="1.0" encoding="UTF-8"?>', "<YealinkIPPhoneDirectory>"]
     for _key, entry in sorted(entries, key=lambda e: e[0]):
-        lines.append("  <DirectoryEntry>")
-        for child in entry:
-            tag = _strip_ns(child.tag)
-            if tag == "Name":
-                lines.append("    <Name>%s</Name>" % _escape_xml((child.text or "").strip()))
-            elif tag == "Telephone":
-                label = child.get("label")
-                if label:
-                    lines.append(
-                        '    <Telephone label="%s">%s</Telephone>'
-                        % (_escape_xml(label), _escape_xml((child.text or "").strip()))
-                    )
-                else:
-                    lines.append(
-                        "    <Telephone>%s</Telephone>" % _escape_xml((child.text or "").strip())
-                    )
-        lines.append("  </DirectoryEntry>")
+        lines.extend(_render_all_entry(entry))
     lines.append("</YealinkIPPhoneDirectory>")
     return "\n".join(lines) + "\n"
 
@@ -1133,113 +1177,130 @@ class PhonebookHandler(BaseHTTPRequestHandler):
             # prunes defensively — see do_GET).
             state.phone_fetch_ips = _prune_fetch_ips(state.phone_fetch_ips)
 
+    def _render_metrics(self) -> list[str]:
+        """Prometheus exposition text for /metrics (caller serves it)."""
+        with state.lock:
+            age = int(time.time() - state.last_sync) if state.last_sync else -1
+            fetch_age = int(time.time() - state.last_phone_fetch) if state.last_phone_fetch else -1
+            # Degraded = last successful sync older than 3x the refresh
+            # interval (or never synced). /health keeps returning 200/ok
+            # in this state — the server itself is fine, only the
+            # upstream sync is behind. Restarting it would not help.
+            degraded = (
+                1
+                if (
+                    state.refresh_interval > 0
+                    and (state.last_sync == 0 or age > 3 * state.refresh_interval)
+                )
+                else 0
+            )
+            lines = [
+                "# HELP yfps_build_info Build/version information (constant 1)",
+                "# TYPE yfps_build_info gauge",
+                'yfps_build_info{version="%s"} 1' % APP_VERSION,
+                "# HELP yfps_degraded 1 if the last successful Fritzbox sync is older than 3x the refresh interval (or never synced), 0 otherwise",
+                "# TYPE yfps_degraded gauge",
+                "yfps_degraded %d" % degraded,
+                "# HELP yfps_auth_failures_total Number of rejected HTTP Basic-Auth attempts since process start",
+                "# TYPE yfps_auth_failures_total counter",
+                "yfps_auth_failures_total %d" % state.auth_failures,
+                "# HELP yfps_auth_rate_limited_total Number of requests blocked by the per-IP auth rate limiter (HTTP 429) since process start",
+                "# TYPE yfps_auth_rate_limited_total counter",
+                "yfps_auth_rate_limited_total %d" % state.auth_rate_limited,
+                "# HELP yfps_sync_success_total Number of successful sync cycles",
+                "# TYPE yfps_sync_success_total counter",
+                "yfps_sync_success_total %d" % state.sync_successes,
+                "# HELP yfps_sync_failure_total Number of failed sync cycles",
+                "# TYPE yfps_sync_failure_total counter",
+                "yfps_sync_failure_total %d" % state.sync_failures,
+                "# HELP yfps_sync_last_timestamp_seconds Unix timestamp of the last successful sync",
+                "# TYPE yfps_sync_last_timestamp_seconds gauge",
+                "yfps_sync_last_timestamp_seconds %d" % int(state.last_sync),
+                "# HELP yfps_sync_age_seconds Seconds since the last successful sync (-1 = never)",
+                "# TYPE yfps_sync_age_seconds gauge",
+                "yfps_sync_age_seconds %d" % age,
+                "# HELP yfps_phonebook_fetch_total Number of phonebook downloads by phones (menu.xml or contacts/<id>.xml)",
+                "# TYPE yfps_phonebook_fetch_total counter",
+                "yfps_phonebook_fetch_total %d" % state.phone_fetches,
+                "# HELP yfps_phonebook_fetch_last_timestamp_seconds Unix timestamp of the last phonebook download by a phone",
+                "# TYPE yfps_phonebook_fetch_last_timestamp_seconds gauge",
+                "yfps_phonebook_fetch_last_timestamp_seconds %d" % int(state.last_phone_fetch),
+                "# HELP yfps_phonebook_fetch_age_seconds Seconds since a phone last downloaded a phonebook (-1 = never)",
+                "# TYPE yfps_phonebook_fetch_age_seconds gauge",
+                "yfps_phonebook_fetch_age_seconds %d" % fetch_age,
+                "# HELP yfps_contacts_total Total contacts across all phonebooks",
+                "# TYPE yfps_contacts_total gauge",
+                "yfps_contacts_total %d" % state.total_contacts,
+                "# HELP yfps_phonebooks_total Number of phonebooks served",
+                "# TYPE yfps_phonebooks_total gauge",
+                "yfps_phonebooks_total %d" % len(state.pb_meta),
+            ]
+            # Per-phonebook contact count — a shrinking source (e.g.
+            # broken Google import into the Fritzbox) is visible per
+            # phonebook, not just in the global sum.
+            if state.pb_meta:
+                lines.append("# HELP yfps_phonebook_contacts Contact count per phonebook")
+                lines.append("# TYPE yfps_phonebook_contacts gauge")
+                for pb in state.pb_meta:
+                    lines.append(  # noqa: PERF401 — append keeps the metric line format explicit
+                        'yfps_phonebook_contacts{id="%d",name="%s"} %d'
+                        % (
+                            cast(int, pb["id"]),
+                            self._prom_escape_label(str(pb["name"])),
+                            cast(int, pb["count"]),
+                        )
+                    )
+            # Per-IP phone-side fetch age — WHICH phone last pulled
+            # (multi-handset). Bounded to the 10 most recent fetchers
+            # (pruned defensively here, not only on fetch).
+            state.phone_fetch_ips = _prune_fetch_ips(state.phone_fetch_ips)
+            if state.phone_fetch_ips:
+                lines.append(
+                    "# HELP yfps_phonebook_fetch_age_seconds_by_ip "
+                    "Seconds since the phone at this client IP last downloaded a phonebook"
+                )
+                lines.append("# TYPE yfps_phonebook_fetch_age_seconds_by_ip gauge")
+                for ip, ts in state.phone_fetch_ips.items():
+                    lines.append(
+                        'yfps_phonebook_fetch_age_seconds_by_ip{ip="%s"} %d'
+                        % (self._prom_escape_label(ip), int(time.time() - ts))
+                    )
+            return lines
+
+    @staticmethod
+    def _parse_contacts_path(path: str) -> int | None:
+        """Phonebook ID from /contacts/<id>.xml, or None if unparseable."""
+        try:
+            return int(path[len("/contacts/") : -len(".xml")])
+        except ValueError:
+            return None
+
+    def _serve_health(self) -> None:
+        """Minimal JSON health payload (open endpoint, Docker HEALTHCHECK)."""
+        with state.lock:
+            age = int(time.time() - state.last_sync) if state.last_sync else -1
+            payload = '{"status":"ok","contacts":%d,"last_sync_age_sec":%d}' % (
+                state.total_contacts,
+                age,
+            )
+        self._serve(payload, content_type="application/json")
+        # Suppress health-check noise — log at DEBUG, not INFO
+        if "healthcheck" not in (self.headers.get("User-Agent", "").lower()):
+            logger.debug("%s - GET /health 200", self.client_address[0])
+
     def do_GET(self) -> None:
         # /health is always open (needed for Docker HEALTHCHECK, monitoring)
         if self.path == "/health":
-            with state.lock:
-                age = int(time.time() - state.last_sync) if state.last_sync else -1
-                payload = '{"status":"ok","contacts":%d,"last_sync_age_sec":%d}' % (
-                    state.total_contacts,
-                    age,
-                )
-            self._serve(payload, content_type="application/json")
-            # Suppress health-check noise — log at DEBUG, not INFO
-            if "healthcheck" not in (self.headers.get("User-Agent", "").lower()):
-                logger.debug("%s - GET /health 200", self.client_address[0])
+            self._serve_health()
             return
 
         # Prometheus metrics — always open (same rationale as /health:
         # exposes operational counters, no contact data)
         if self.path == "/metrics":
-            with state.lock:
-                age = int(time.time() - state.last_sync) if state.last_sync else -1
-                fetch_age = (
-                    int(time.time() - state.last_phone_fetch) if state.last_phone_fetch else -1
-                )
-                # Degraded = last successful sync older than 3x the refresh
-                # interval (or never synced). /health keeps returning 200/ok
-                # in this state — the server itself is fine, only the
-                # upstream sync is behind. Restarting it would not help.
-                degraded = (
-                    1
-                    if (
-                        state.refresh_interval > 0
-                        and (state.last_sync == 0 or age > 3 * state.refresh_interval)
-                    )
-                    else 0
-                )
-                lines = [
-                    "# HELP yfps_build_info Build/version information (constant 1)",
-                    "# TYPE yfps_build_info gauge",
-                    'yfps_build_info{version="%s"} 1' % APP_VERSION,
-                    "# HELP yfps_degraded 1 if the last successful Fritzbox sync is older than 3x the refresh interval (or never synced), 0 otherwise",
-                    "# TYPE yfps_degraded gauge",
-                    "yfps_degraded %d" % degraded,
-                    "# HELP yfps_auth_failures_total Number of rejected HTTP Basic-Auth attempts since process start",
-                    "# TYPE yfps_auth_failures_total counter",
-                    "yfps_auth_failures_total %d" % state.auth_failures,
-                    "# HELP yfps_auth_rate_limited_total Number of requests blocked by the per-IP auth rate limiter (HTTP 429) since process start",
-                    "# TYPE yfps_auth_rate_limited_total counter",
-                    "yfps_auth_rate_limited_total %d" % state.auth_rate_limited,
-                    "# HELP yfps_sync_success_total Number of successful sync cycles",
-                    "# TYPE yfps_sync_success_total counter",
-                    "yfps_sync_success_total %d" % state.sync_successes,
-                    "# HELP yfps_sync_failure_total Number of failed sync cycles",
-                    "# TYPE yfps_sync_failure_total counter",
-                    "yfps_sync_failure_total %d" % state.sync_failures,
-                    "# HELP yfps_sync_last_timestamp_seconds Unix timestamp of the last successful sync",
-                    "# TYPE yfps_sync_last_timestamp_seconds gauge",
-                    "yfps_sync_last_timestamp_seconds %d" % int(state.last_sync),
-                    "# HELP yfps_sync_age_seconds Seconds since the last successful sync (-1 = never)",
-                    "# TYPE yfps_sync_age_seconds gauge",
-                    "yfps_sync_age_seconds %d" % age,
-                    "# HELP yfps_phonebook_fetch_total Number of phonebook downloads by phones (menu.xml or contacts/<id>.xml)",
-                    "# TYPE yfps_phonebook_fetch_total counter",
-                    "yfps_phonebook_fetch_total %d" % state.phone_fetches,
-                    "# HELP yfps_phonebook_fetch_last_timestamp_seconds Unix timestamp of the last phonebook download by a phone",
-                    "# TYPE yfps_phonebook_fetch_last_timestamp_seconds gauge",
-                    "yfps_phonebook_fetch_last_timestamp_seconds %d" % int(state.last_phone_fetch),
-                    "# HELP yfps_phonebook_fetch_age_seconds Seconds since a phone last downloaded a phonebook (-1 = never)",
-                    "# TYPE yfps_phonebook_fetch_age_seconds gauge",
-                    "yfps_phonebook_fetch_age_seconds %d" % fetch_age,
-                    "# HELP yfps_contacts_total Total contacts across all phonebooks",
-                    "# TYPE yfps_contacts_total gauge",
-                    "yfps_contacts_total %d" % state.total_contacts,
-                    "# HELP yfps_phonebooks_total Number of phonebooks served",
-                    "# TYPE yfps_phonebooks_total gauge",
-                    "yfps_phonebooks_total %d" % len(state.pb_meta),
-                ]
-                # Per-phonebook contact count — a shrinking source (e.g.
-                # broken Google import into the Fritzbox) is visible per
-                # phonebook, not just in the global sum.
-                if state.pb_meta:
-                    lines.append("# HELP yfps_phonebook_contacts Contact count per phonebook")
-                    lines.append("# TYPE yfps_phonebook_contacts gauge")
-                    for pb in state.pb_meta:
-                        lines.append(  # noqa: PERF401 — append keeps the metric line format explicit
-                            'yfps_phonebook_contacts{id="%d",name="%s"} %d'
-                            % (
-                                cast(int, pb["id"]),
-                                self._prom_escape_label(str(pb["name"])),
-                                cast(int, pb["count"]),
-                            )
-                        )
-                # Per-IP phone-side fetch age — WHICH phone last pulled
-                # (multi-handset). Bounded to the 10 most recent fetchers
-                # (pruned defensively here, not only on fetch).
-                state.phone_fetch_ips = _prune_fetch_ips(state.phone_fetch_ips)
-                if state.phone_fetch_ips:
-                    lines.append(
-                        "# HELP yfps_phonebook_fetch_age_seconds_by_ip "
-                        "Seconds since the phone at this client IP last downloaded a phonebook"
-                    )
-                    lines.append("# TYPE yfps_phonebook_fetch_age_seconds_by_ip gauge")
-                    for ip, ts in state.phone_fetch_ips.items():
-                        lines.append(
-                            'yfps_phonebook_fetch_age_seconds_by_ip{ip="%s"} %d'
-                            % (self._prom_escape_label(ip), int(time.time() - ts))
-                        )
-            self._serve("\n".join(lines) + "\n", content_type="text/plain; version=0.0.4")
+            self._serve(
+                "\n".join(self._render_metrics()) + "\n",
+                content_type="text/plain; version=0.0.4",
+            )
             return
 
         # All other endpoints require auth
@@ -1259,10 +1320,8 @@ class PhonebookHandler(BaseHTTPRequestHandler):
             self._record_phone_fetch()
             self._serve(build_all_xml())
         elif self.path.startswith("/contacts/") and self.path.endswith(".xml"):
-            # Extract phonebook ID from path: /contacts/1.xml → 1
-            try:
-                pb_id = int(self.path[len("/contacts/") : -len(".xml")])
-            except ValueError:
+            pb_id = self._parse_contacts_path(self.path)
+            if pb_id is None:
                 self.send_error(404)
                 return
             with state.lock:
@@ -1565,33 +1624,44 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     return p
 
 
-def main() -> None:
-    # Env parsing for argparse defaults happens DURING parser construction
-    # (_build_int_env / _parse_bool) — wrap it so garbage produces the
-    # same clean "Configuration error: …" as every later check, never a
-    # Python traceback.
+def _resolve_phonebook_ids(phonebook_id_arg: str) -> list[int]:
+    """Explicit IDs from --phonebook-id, or [] (= auto-detect in background).
+
+    Auto-detection happens in the BACKGROUND sync loop, never at boot:
+    the detection call reaches the network, and a slow/unreachable
+    Fritzbox must not delay the HTTP server start (Docker healthcheck
+    restart loops). sync_loop re-detects with backoff on every cycle.
+    """
+    if phonebook_id_arg:
+        return [int(i) for i in phonebook_id_arg.split(",")]
+    logger.info(
+        "Phonebook ID auto-detection deferred to background sync "
+        "(set FB_PHONEBOOK_ID to pin explicit IDs)"
+    )
+    return []
+
+
+def _init_cache(cache_dir_arg: str) -> None:
+    """Set the global cache dir, restore the last snapshot if present.
+
+    Fail fast when the cache directory cannot be created — a silently
+    missing cache would promise restart resilience it does not deliver.
+    """
+    global cache_dir
+    cache_dir = cache_dir_arg
+    if not cache_dir:
+        return
     try:
-        args = _build_arg_parser().parse_args()
-    except ValueError as exc:
-        print("Configuration error: %s" % exc, file=sys.stderr)
+        os.makedirs(cache_dir, exist_ok=True)
+    except OSError as exc:
+        logger.error("Cannot create cache directory %s: %s", cache_dir, exc)
         sys.exit(1)
+    if _load_cache(cache_dir):
+        logger.info("Serving cached phonebook until the next successful sync")
 
-    try:
-        log_level = _parse_log_level(args.log_level)
-    except ValueError as exc:
-        print("Configuration error: %s" % exc, file=sys.stderr)
-        sys.exit(1)
 
-    if args.log_format.lower() == "json":
-        formatter: logging.Formatter = _JsonLogFormatter()
-    else:
-        formatter = logging.Formatter(
-            "%(asctime)s %(levelname)-5s %(name)s: %(message)s",
-        )
-    logging.basicConfig(level=log_level, handlers=[logging.StreamHandler(sys.stdout)])
-    logging.root.handlers[0].setFormatter(formatter)
-
-    # Fail fast on invalid configuration instead of dying at runtime.
+def _validate_args(args: argparse.Namespace) -> None:
+    """Fail fast on invalid config and missing credentials (exit 1)."""
     try:
         _validate_config(
             {
@@ -1612,6 +1682,78 @@ def main() -> None:
         logger.error("Set via --fritzbox-user/--fritzbox-password or FB_USER/FB_PASSWORD env vars.")
         sys.exit(1)
 
+
+def _init_logging(args: argparse.Namespace) -> None:
+    """Configure root logging per --log-level/--log-format (fail-fast)."""
+    try:
+        log_level = _parse_log_level(args.log_level)
+    except ValueError as exc:
+        print("Configuration error: %s" % exc, file=sys.stderr)
+        sys.exit(1)
+
+    if args.log_format.lower() == "json":
+        formatter: logging.Formatter = _JsonLogFormatter()
+    else:
+        formatter = logging.Formatter(
+            "%(asctime)s %(levelname)-5s %(name)s: %(message)s",
+        )
+    logging.basicConfig(level=log_level, handlers=[logging.StreamHandler(sys.stdout)])
+    logging.root.handlers[0].setFormatter(formatter)
+
+
+def _external_urls(args: argparse.Namespace) -> tuple[str, str]:
+    """(server_base, external_url) — auth credentials embedded if configured.
+
+    Pure URL construction from validated args; side effect: sets the
+    module-global auth credentials and prints the auth log lines
+    (pre-refactor behavior kept, including the auth-disabled warning).
+    """
+    global auth_user, auth_pass
+    auth_user = args.auth_user
+    auth_pass = args.auth_password
+
+    if not args.server_url:
+        args.server_url = "http://0.0.0.0:%d" % args.listen_port
+        logger.warning(
+            "--server-url not set; using %s — the phone may not reach this address.",
+            args.server_url,
+        )
+        logger.warning("Set --server-url to the IP/hostname the Yealink will use.")
+
+    server_base = args.server_url.rstrip("/")
+    external_url = server_base
+
+    if auth_user:
+        logger.info("HTTP Basic Auth enabled (user: %s)", auth_user)
+        # Embed credentials in the external URL for the phone
+        # The AX83H does not have separate username/password fields for
+        # remote phonebooks, so credentials must be in the URL.
+        if "://" in server_base:
+            scheme, _, rest = server_base.partition("://")
+            external_url = "%s://%s:%s@%s" % (scheme, auth_user, auth_pass, rest)
+        else:
+            external_url = "http://%s:%s@%s" % (auth_user, auth_pass, server_base)
+        logger.info("External URL (with embedded auth): %s", external_url)
+    else:
+        logger.warning("HTTP Basic Auth DISABLED — phonebook is accessible without credentials")
+    return server_base, external_url
+
+
+def main() -> None:
+    # Env parsing for argparse defaults happens DURING parser construction
+    # (_build_int_env / _parse_bool) — wrap it so garbage produces the
+    # same clean "Configuration error: …" as every later check, never a
+    # Python traceback.
+    try:
+        args = _build_arg_parser().parse_args()
+    except ValueError as exc:
+        print("Configuration error: %s" % exc, file=sys.stderr)
+        sys.exit(1)
+
+    _init_logging(args)
+
+    _validate_args(args)
+
     # Diagnostic mode: verify the Fritzbox connection and conversion, then exit.
     if args.check:
         client = FritzboxClient(
@@ -1627,16 +1769,9 @@ def main() -> None:
         )
         logger.warning("Set --server-url to the IP/hostname the Yealink will use.")
 
-    # server_base: used for internal URL construction (no credentials)
-    # external_url: used for the Menu.xml <URL> tags (includes credentials
-    # if auth is enabled, because the AX83H has no separate auth fields)
-    server_base = args.server_url.rstrip("/")
-    external_url = server_base
-
-    # Set HTTP Basic Auth credentials globally for the handler
-    global auth_user, auth_pass, ip_allowlist
-    auth_user = args.auth_user
-    auth_pass = args.auth_password
+    # IP allowlist parses BEFORE auth globals are set (fail-fast order
+    # identical to the pre-refactor code).
+    global ip_allowlist
     try:
         ip_allowlist = _IpAllowlist(args.allowed_ips)
     except ValueError as exc:
@@ -1644,38 +1779,17 @@ def main() -> None:
         sys.exit(1)
     if args.allowed_ips:
         logger.info("IP allowlist enabled: %s", args.allowed_ips)
-    if auth_user:
-        logger.info("HTTP Basic Auth enabled (user: %s)", auth_user)
-        # Embed credentials in the external URL for the phone
-        # The AX83H does not have separate username/password fields for
-        # remote phonebooks, so credentials must be in the URL.
-        # Format: http://user:pass@host:port
-        if "://" in server_base:
-            scheme, _, rest = server_base.partition("://")
-            external_url = "%s://%s:%s@%s" % (scheme, auth_user, auth_pass, rest)
-        else:
-            external_url = "http://%s:%s@%s" % (auth_user, auth_pass, server_base)
-        logger.info("External URL (with embedded auth): %s", external_url)
-    else:
-        logger.warning("HTTP Basic Auth DISABLED — phonebook is accessible without credentials")
+
+    # server_base: used for internal URL construction (no credentials)
+    # external_url: used for the Menu.xml <URL> tags (includes credentials
+    # if auth is enabled, because the AX83H has no separate auth fields)
+    server_base, external_url = _external_urls(args)
 
     # Resolve phonebook IDs
     client = FritzboxClient(
         args.fritzbox_host, args.fritzbox_port, args.fritzbox_user, args.fritzbox_password
     )
-
-    if args.phonebook_id:
-        pb_ids = [int(i) for i in args.phonebook_id.split(",")]
-    else:
-        # Auto-detection happens in the BACKGROUND sync loop, never here:
-        # this call reaches the network, and a slow/unreachable Fritzbox
-        # must not delay the HTTP server from starting (Docker healthcheck
-        # restart loops). sync_loop re-detects with backoff on every cycle.
-        pb_ids = []
-        logger.info(
-            "Phonebook ID auto-detection deferred to background sync "
-            "(set FB_PHONEBOOK_ID to pin explicit IDs)"
-        )
+    pb_ids = _resolve_phonebook_ids(args.phonebook_id)
 
     # Serve a placeholder until first successful sync
     with state.lock:
@@ -1689,20 +1803,7 @@ def main() -> None:
     if dedup_contacts:
         logger.info("Contact dedup enabled: same-name contacts within one phonebook are merged")
 
-    # Persistent cache: restore the last snapshot (if configured) so a
-    # restart while the Fritzbox is unreachable still serves real data.
-    # Fail fast when the cache directory cannot be created — a silently
-    # missing cache would promise restart resilience it does not deliver.
-    global cache_dir
-    cache_dir = args.cache_dir
-    if cache_dir:
-        try:
-            os.makedirs(cache_dir, exist_ok=True)
-        except OSError as exc:
-            logger.error("Cannot create cache directory %s: %s", cache_dir, exc)
-            sys.exit(1)
-        if _load_cache(cache_dir):
-            logger.info("Serving cached phonebook until the next successful sync")
+    _init_cache(args.cache_dir)
 
     # No synchronous initial sync here: sync_once reaches the network and
     # must never delay the HTTP server start (the comment above this block
