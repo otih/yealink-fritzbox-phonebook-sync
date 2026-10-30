@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **BREAKING: `SYNC_EXTERNAL_URL` removed.** The pre-0.9.0 alias for
+  `SYNC_SERVER_URL` kept silently working as a fallback since the
+  rename — never officially documented, a trap for anyone reading an
+  old deployment's env. Removed in the v0.14.0 legacy cleanup; set
+  `SYNC_SERVER_URL` instead. A negative test pins that the alias is
+  dead (and that the canonical name still works).
+
 ## [0.13.4] - 2026-10-30
 
 ### Added
