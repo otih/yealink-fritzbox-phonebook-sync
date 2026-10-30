@@ -40,8 +40,10 @@ jobs:
         with:
           python-version: '3.15'
 
-      - name: Install ruff + mypy
-        run: pip install ruff mypy
+      - name: Install pinned ruff + mypy
+        # Pinned via requirements-dev.txt — quality gates must stay
+        # reproducible (see file header).
+        run: pip install -r requirements-dev.txt
 
       - name: Lint
         run: ruff check yealink-fritzbox-phonebook-sync.py tests/
@@ -77,8 +79,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install pytest + coverage
-        run: pip install pytest pytest-cov
+      - name: Install pinned pytest + coverage
+        run: pip install -r requirements-dev.txt
 
       - name: Run tests with coverage
         # Gate ratchets upward as coverage grows: 45% (start) -> 60%
