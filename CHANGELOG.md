@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Security lint is now a CI gate, not a discipline.** The project
+  rule demanded a `ruff --select S,B` scan before every commit, but
+  nothing enforced it. ruff's bandit (`S`) rules now run in the lint
+  job on every push. Accepted risks (0.0.0.0 bind, scheme-checked URL
+  open, trusted-source XML parse, RFC 7616 MD5 digest) moved from
+  scattered `# noqa` comments into ONE machine-readable `ignore`
+  list in pyproject.toml with rationale comments; test-typical
+  findings (asserts, dummy credentials, subprocess of the module
+  under test) are per-file-ignored for `tests/`. The 11 in-code
+  noqa comments remain as site documentation.
+- **CI toolchain pinned via `requirements-dev.txt`** (ruff, mypy,
+  pytest, pytest-cov): quality gates must be reproducible — unpinned
+  installs let lint rules drift between runs, failing green commits
+  or silently flagging less. Bumps go through PRs, same discipline
+  as the Docker base image.
+
 ## [0.13.2] - 2026-10-29
 
 ### Fixed

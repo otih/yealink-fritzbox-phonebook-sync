@@ -10,12 +10,33 @@ select = [
     "I",   # isort
     "B",   # flake8-bugbear
     "UP",  # pyupgrade
+    "S",   # flake8-bandit security checks — GATED IN CI since v0.13.3:
+           # the project rule demanded a security scan before every
+           # commit, but it relied on discipline. Now every push runs
+           # it; accepted risks live HERE, machine-readable, one place.
 ]
 ignore = [
     "E501",  # line too long (handled by formatter)
     "B008",  # do not perform function calls in argument defaults
     "UP031",  # percent-format is fine — project targets Python 3.8 compatibility
     "UP032",  # f-strings: keep %-format for 3.8 compat, avoid churn
+    # --- accepted security findings (documented risks, see docs/threat-model.md) ---
+    "S104",  # 0.0.0.0 bind intentional: the Yealink phone on the LAN must reach
+             # the server; restrict via container network policy / reverse proxy
+    "S310",  # scheme-checked URL open: only http(s) constructed from validated config
+    "S314",  # XML parse of Fritzbox TR-064 responses: trusted source, ElementTree
+             # does not resolve external entities (XXE-safe), no DTDs
+    "S324",  # MD5 in RFC 7616 Digest auth: the Fritzbox mandates it (S324 is
+             # inherent to the TR-064 protocol, not a provider choice)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+    "S101",  # asserts are the point of tests
+    "S105",  # dummy credentials for the server under test (never real)
+    "S106",  # ditto — placeholder passwords in fixtures
+    "S603",  # subprocess runs the module under test itself — trusted input
+    "S607",  # partial path for the interpreter is deliberate in fixtures
 ]
 
 [tool.ruff.lint.isort]
