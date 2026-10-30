@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.4] - 2026-10-30
+
+### Added
+
+- **Pre-commit config** (`.pre-commit-config.yaml`): wires the same
+  gates CI runs (ruff check + format, mypy --strict; versions match
+  the pinned toolchain) into local commits — contributors see
+  problems in seconds instead of in a red push. CONTRIBUTING leads
+  with it as step 0.
+- **`SYNC_EXTERNAL_URL` documented:** the legacy alias (pre-0.9.0
+  name) has been accepted as a fallback for `SYNC_SERVER_URL` all
+  along, but no doc mentioned it — anyone migrating an old
+  deployment had to read the source. Now noted in .env.example and
+  docs/configuration.md.
+- **Error-path tests for the previously untested failure branches**
+  (8 new tests): raw HTTP response parser contracts (empty response,
+  missing separator, malformed status line, non-numeric status), the
+  phonebook URL scheme refusal (file:// and ftp:// — the security
+  path against a compromised Fritzbox), corrupt-book skip in the
+  /all.xml merge, and the JSON log formatter output. Branch coverage
+  77% -> 79%; **the CI gate ratchets 70 -> 75.**
+
+### Fixed
+
+- **Lint gates from v0.13.3 are actually active now.** The PR #77
+  squash lost the pyproject `select` entries for `SIM`/`C4`/`PERF`/
+  `RUF` (the findings had been fixed against a manual
+  `--select SIM,C4,PERF,RUF` run, but the config change never
+  landed — CI silently kept running without them). All four (plus
+  the new C901) are in the selection now and the full gate is
+  verified green.
+
+### Changed
+
+- **Complexity gate (C901, max 10) + hotspots refactored below it.**
+  The five functions over the threshold — `convert_single_phonebook`
+  (26!), `main` (19), `do_GET` (15), `build_all_xml` (12),
+  `_raw_post` (11) — were decomposed into single-purpose helpers.
+  Behavior identical: 159 tests + branch coverage green, mypy
+  --strict green.
+
 ## [0.13.3] - 2026-10-30
 
 ### Changed
