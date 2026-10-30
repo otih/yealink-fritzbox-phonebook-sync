@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Coverage gate measures branches, not lines** (`--cov-branch` in
+  CI): line coverage counts a line as covered when it executed —
+  even if only one side of its `if` was ever tested. Branch coverage
+  requires both paths. Current: 78% branch (gate stays 70); the
+  number is harder-earned and the metric honest.
+
 ### Fixed
 
 - **Python support floor made honest: 3.9+, not 3.8+.** README and
