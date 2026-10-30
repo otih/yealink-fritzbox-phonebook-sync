@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Python support floor made honest: 3.9+, not 3.8+.** README and
+  docs claimed "pure Python 3.8+ standard library" while the code
+  uses builtin generics (`dict[str, ...]`) — 3.9+ syntax. CI never
+  tested 3.8. ruff's `target-version` moved py38 -> py39; the
+  UP031/UP032 ignores (kept %-formatting) were re-justified as a
+  deliberate style choice instead of a phantom 3.8 constraint.
+
+### Changed
+
+- **Simplification and perf rules now gated:** `SIM`, `C4`, `PERF`,
+  `RUF` joined the lint selection. All 32 findings resolved: 12
+  auto-fixed, 11 unused unpacked variables removed from tests,
+  single-element slices to `next()` (RUF015), `contextlib.suppress`
+  instead of try/except/pass (SIM105); three deliberate patterns
+  carry per-line `# noqa` with rationale (per-book error isolation
+  in `--check`, the polling loop, explicit metric-line formatting).
+
 ### Changed
 
 - **mypy `--strict` is the new type gate.** All 15 strict findings

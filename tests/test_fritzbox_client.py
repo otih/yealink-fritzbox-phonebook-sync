@@ -159,11 +159,12 @@ class TestSoapFlow:
             def connect(self, addr):
                 raise OSError("network unreachable")
 
-        with patch.object(yfps.socket, "socket", _DeadSocket), patch.object(
-            yfps.time, "sleep", lambda s: None
+        with (
+            patch.object(yfps.socket, "socket", _DeadSocket),
+            patch.object(yfps.time, "sleep", lambda s: None),
+            pytest.raises(RuntimeError, match="could not obtain digest challenge"),
         ):
-            with pytest.raises(RuntimeError, match="could not obtain digest challenge"):
-                c._soap("GetPhonebookList")
+            c._soap("GetPhonebookList")
 
     def test_soap_500_without_challenge_falls_into_noauth_path(self):
         """500 SOAP faults WITHOUT a challenge header are not retried as
@@ -175,7 +176,7 @@ class TestSoapFlow:
         401 on a retry. The caller sees the 500 body as if unauthenticated."""
         c = _client()
         responses = [_http_response(500, {}, b"SOAP fault")] * yfps.MAX_CHALLENGE_RETRIES
-        sent, ctx = _patch_socket(responses)
+        _sent, ctx = _patch_socket(responses)
         with ctx, patch.object(yfps.time, "sleep", lambda s: None):
             out = c._soap("GetPhonebookList")
         assert "SOAP fault" in out
@@ -203,8 +204,8 @@ class TestSoapFlow:
             _http_response(401, {"WWW-Authenticate": CHALLENGE}, b""),
             _http_response(403, {}, b"Forbidden"),
         ]
-        sent, ctx = _patch_socket(responses)
-        with ctx, patch.object(yfps.time, "sleep", lambda s: None):
+        _sent, ctx = _patch_socket(responses)
+        with ctx, patch.object(yfps.time, "sleep", lambda s: None):  # noqa: SIM117 — outer combines fixtures, inner asserts
             with pytest.raises(RuntimeError, match="HTTP 403"):
                 c._soap("GetPhonebookList")
 
@@ -222,7 +223,7 @@ class TestGetPhonebookIds:
             _http_response(401, {"WWW-Authenticate": CHALLENGE}, b""),
             _http_response(200, {}, soap_body),
         ]
-        sent, ctx = _patch_socket(responses)
+        _sent, ctx = _patch_socket(responses)
         with ctx, patch.object(yfps.time, "sleep", lambda s: None):
             ids = c.get_phonebook_ids()
         assert ids == [0, 1, 2]

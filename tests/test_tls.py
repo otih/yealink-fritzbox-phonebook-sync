@@ -154,7 +154,7 @@ class TestTlsHardening:
             ctx.verify_mode = ssl.CERT_NONE
             ctx.minimum_version = ssl.TLSVersion.TLSv1
             ctx.maximum_version = ssl.TLSVersion.TLSv1_1
-            with pytest.raises(ssl.SSLError):
+            with pytest.raises(ssl.SSLError):  # noqa: SIM117 — nesting mirrors the TLS handshake layering
                 with _socket.create_connection(("127.0.0.1", port), timeout=3) as raw:
                     with ctx.wrap_socket(raw):
                         pass
@@ -173,7 +173,7 @@ class TestTlsHardening:
                 ctx.verify_mode = ssl.CERT_NONE
                 ctx.maximum_version = ssl.TLSVersion.TLSv1_2
                 ctx.set_ciphers(suite)
-                with pytest.raises(ssl.SSLError):
+                with pytest.raises(ssl.SSLError):  # noqa: SIM117 — nesting mirrors the TLS handshake layering
                     with _socket.create_connection(("127.0.0.1", port), timeout=3) as raw:
                         with ctx.wrap_socket(raw):
                             pass
