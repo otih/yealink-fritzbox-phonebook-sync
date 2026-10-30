@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Migration guide** (`docs/migration-v0.14.md`): rename table for
+  the v0.14.0 breaking env changes, what fail-fast behavior catches
+  a forgotten rename, and the `--check` one-shot verification.
+
 ### Removed
 
 - **BREAKING: `FB_*` env vars renamed to `SYNC_FRITZBOX_*`** — one
