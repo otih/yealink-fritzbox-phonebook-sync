@@ -10,7 +10,7 @@ Each Fritzbox phonebook appears as a separate entry in the phone's
 "External Phonebook" menu. Empty phonebooks (only internal numbers) are
 hidden automatically.
 
-Phonebook selection (--phonebook-id / FB_PHONEBOOK_ID):
+Phonebook selection (--phonebook-id / SYNC_FRITZBOX_PHONEBOOK_ID):
   - Single ID (e.g. "1"):      Only that phonebook appears in the menu.
   - Multiple IDs (e.g. "0,1"):  Each appears as a selectable menu entry.
   - Empty (unset):              All phonebooks are auto-detected and listed.
@@ -29,7 +29,7 @@ Usage:
     --server-url http://192.168.1.100:8080
 
 Env vars (fallback for CLI args):
-  FB_HOST, FB_PORT, FB_USER, FB_PASSWORD, FB_PHONEBOOK_ID,
+  SYNC_FRITZBOX_HOST, SYNC_FRITZBOX_PORT, SYNC_FRITZBOX_USER, SYNC_FRITZBOX_PASSWORD, SYNC_FRITZBOX_PHONEBOOK_ID,
   SYNC_LISTEN_PORT, SYNC_REFRESH_INTERVAL, SYNC_SERVER_URL,
   SYNC_AUTH_USER, SYNC_AUTH_PASSWORD
 
@@ -247,7 +247,7 @@ def _parse_int_env(name: str, default: str) -> int:
     """Read an integer env variable; fail fast with the VARIABLE NAME.
 
     A raw int() here would crash argparse construction with a Python
-    traceback that never names the setting (observed: FB_PORT=abc) —
+    traceback that never names the setting (observed: SYNC_FRITZBOX_PORT=abc) —
     the user could not tell WHAT to fix. Raises ValueError naming the
     env variable and the expected format.
     """
@@ -1440,7 +1440,7 @@ def sync_loop(
     Auto-detected phonebook IDs (empty phonebook_ids argument) are
     RE-DETECTED on every sync cycle: a phonebook created on the Fritzbox
     at runtime appears on the phone without a restart. Explicitly
-    configured IDs (FB_PHONEBOOK_ID set) are used verbatim forever.
+    configured IDs (SYNC_FRITZBOX_PHONEBOOK_ID set) are used verbatim forever.
     """
     pb_ids = list(phonebook_ids)
     consecutive_failures = 0
@@ -1494,7 +1494,7 @@ def _run_check(client: FritzboxClient, phonebook_id_arg: str) -> int:
     except Exception as exc:
         print("FAIL: cannot reach the Fritzbox: %s" % exc)
         print(
-            "Hints: check FB_HOST/FB_PORT (TR-064 port 49000), FB_USER/FB_PASSWORD,"
+            "Hints: check SYNC_FRITZBOX_HOST/SYNC_FRITZBOX_PORT (TR-064 port 49000), SYNC_FRITZBOX_USER/SYNC_FRITZBOX_PASSWORD,"
             " and that TR-064 access is enabled on the Fritzbox."
         )
         return 1
@@ -1553,13 +1553,15 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         version="yealink-fritzbox-phonebook-sync v%s" % APP_VERSION,
         help="Print the version and exit (single source: APP_VERSION).",
     )
-    p.add_argument("--fritzbox-host", default=os.getenv("FB_HOST", "fritz.box"))
-    p.add_argument("--fritzbox-port", type=int, default=_parse_int_env("FB_PORT", "49000"))
-    p.add_argument("--fritzbox-user", default=os.getenv("FB_USER", ""))
-    p.add_argument("--fritzbox-password", default=os.getenv("FB_PASSWORD", ""))
+    p.add_argument("--fritzbox-host", default=os.getenv("SYNC_FRITZBOX_HOST", "fritz.box"))
+    p.add_argument(
+        "--fritzbox-port", type=int, default=_parse_int_env("SYNC_FRITZBOX_PORT", "49000")
+    )
+    p.add_argument("--fritzbox-user", default=os.getenv("SYNC_FRITZBOX_USER", ""))
+    p.add_argument("--fritzbox-password", default=os.getenv("SYNC_FRITZBOX_PASSWORD", ""))
     p.add_argument(
         "--phonebook-id",
-        default=os.getenv("FB_PHONEBOOK_ID", ""),
+        default=os.getenv("SYNC_FRITZBOX_PHONEBOOK_ID", ""),
         help="Single ID (e.g. '1'), multiple (e.g. '0,1'), or empty for all",
     )
     p.add_argument("--listen-port", type=int, default=_parse_int_env("SYNC_LISTEN_PORT", "8080"))
@@ -1636,7 +1638,7 @@ def _resolve_phonebook_ids(phonebook_id_arg: str) -> list[int]:
         return [int(i) for i in phonebook_id_arg.split(",")]
     logger.info(
         "Phonebook ID auto-detection deferred to background sync "
-        "(set FB_PHONEBOOK_ID to pin explicit IDs)"
+        "(set SYNC_FRITZBOX_PHONEBOOK_ID to pin explicit IDs)"
     )
     return []
 
@@ -1679,7 +1681,9 @@ def _validate_args(args: argparse.Namespace) -> None:
 
     if not args.fritzbox_user or not args.fritzbox_password:
         logger.error("Fritzbox user and password required.")
-        logger.error("Set via --fritzbox-user/--fritzbox-password or FB_USER/FB_PASSWORD env vars.")
+        logger.error(
+            "Set via --fritzbox-user/--fritzbox-password or SYNC_FRITZBOX_USER/SYNC_FRITZBOX_PASSWORD env vars."
+        )
         sys.exit(1)
 
 

@@ -11,11 +11,11 @@ services:
     # The listen port is directly on the host — no port mapping needed.
     network_mode: host
     environment:
-      FB_HOST: ${FB_HOST:-fritz.box}
-      FB_PORT: ${FB_PORT:-49000}
-      FB_USER: ${FB_USER:?FB_USER must be set in .env}
-      FB_PASSWORD: ${FB_PASSWORD:?FB_PASSWORD must be set in .env}
-      FB_PHONEBOOK_ID: ${FB_PHONEBOOK_ID:-}
+      SYNC_FRITZBOX_HOST: ${SYNC_FRITZBOX_HOST:-fritz.box}
+      SYNC_FRITZBOX_PORT: ${SYNC_FRITZBOX_PORT:-49000}
+      SYNC_FRITZBOX_USER: ${SYNC_FRITZBOX_USER:?SYNC_FRITZBOX_USER must be set in .env}
+      SYNC_FRITZBOX_PASSWORD: ${SYNC_FRITZBOX_PASSWORD:?SYNC_FRITZBOX_PASSWORD must be set in .env}
+      SYNC_FRITZBOX_PHONEBOOK_ID: ${SYNC_FRITZBOX_PHONEBOOK_ID:-}
       SYNC_LISTEN_PORT: ${SYNC_LISTEN_PORT:-8080}
       SYNC_REFRESH_INTERVAL: ${SYNC_REFRESH_INTERVAL:-3600}
       SYNC_SERVER_URL: ${SYNC_SERVER_URL:?SYNC_SERVER_URL must be set in .env}

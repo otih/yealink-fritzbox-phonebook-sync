@@ -19,7 +19,7 @@ python3 yealink-fritzbox-phonebook-sync.py --check \
 - **FAIL: cannot reach the Fritzbox** → continue with
   [Fritzbox unreachable](#fritzbox-unreachable) below.
 - **FAIL: configured phonebook ID(s) … not in the Fritzbox phonebook list**
-  → your `FB_PHONEBOOK_ID` references a phonebook that no longer exists;
+  → your `SYNC_FRITZBOX_PHONEBOOK_ID` references a phonebook that no longer exists;
   leave it empty (auto-detect) or use an ID from the printed list.
 - **WARN: phonebook … 0 usable contacts** → the phonebook contains only
   internal Fritzbox numbers (`**9`, `**600`) — it is hidden from the menu
@@ -53,11 +53,11 @@ In order of probability:
 - **Wrong user/permissions:** the Fritzbox user needs
   *Zugang zu Inhalten aus dem Heimnetz* — a plain "guest" account without
   it gets 401s forever.
-- **FB_HOST resolves IPv6-only:** `fritz.box` resolves only via IPv6 in
+- **SYNC_FRITZBOX_HOST resolves IPv6-only:** `fritz.box` resolves only via IPv6 in
   some networks; a container on a Docker bridge has no IPv6 and cannot
   reach it. Symptom: `Address family for hostname not supported`. Fix:
   `network_mode: host` for the container (IPv6 comes from the host), or
-  use the Fritzbox's IPv4 address as `FB_HOST`.
+  use the Fritzbox's IPv4 address as `SYNC_FRITZBOX_HOST`.
 - **Fritzbox rebooting / firmware update:** the server retries with
   exponential backoff and serves the last known good data — nothing to
   do, watch `yfps_sync_age_seconds` recover.

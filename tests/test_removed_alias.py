@@ -47,3 +47,25 @@ def test_server_url_still_works():
         timeout=30,
     )
     assert r.returncode == 0
+
+
+def test_fb_env_names_are_gone():
+    """The old FB_* env names must have NO effect (v0.14.0 unification).
+
+    FB_HOST was the pre-0.14.0 name for SYNC_FRITZBOX_HOST; setting it
+    must not change anything — the canonical name wins by default.
+    """
+    env = dict(os.environ)
+    env["FB_HOST"] = "legacy-should-be-ignored"
+    env["FB_PORT"] = "1"
+    env.pop("SYNC_FRITZBOX_HOST", None)
+    env.pop("SYNC_FRITZBOX_PORT", None)
+    # --check with garbage port from FB_PORT would fail IF the legacy
+    # name still worked; with it dead, parsing uses defaults and
+    # --version exits 0.
+    r = subprocess.run(
+        [sys.executable, APP, "--version"],
+        capture_output=True, text=True, env=env, timeout=30,
+    )
+    assert r.returncode == 0
+    assert "legacy-should-be-ignored" not in r.stdout + r.stderr
