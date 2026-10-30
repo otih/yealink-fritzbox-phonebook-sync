@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Pre-commit config** (`.pre-commit-config.yaml`): wires the same
+  gates CI runs (ruff check + format, mypy --strict; versions match
+  the pinned toolchain) into local commits — contributors see
+  problems in seconds instead of in a red push. CONTRIBUTING leads
+  with it as step 0.
 - **`SYNC_EXTERNAL_URL` documented:** the legacy alias (pre-0.9.0
   name) has been accepted as a fallback for `SYNC_SERVER_URL` all
   along, but no doc mentioned it — anyone migrating an old

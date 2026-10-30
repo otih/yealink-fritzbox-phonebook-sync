@@ -1,0 +1,17 @@
+# Local gates = CI gates: see problems in seconds, not in a red push.
+# Versions match requirements-dev.txt (pinned toolchain).
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.2
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+  - repo: local
+    hooks:
+      - id: mypy-strict
+        name: mypy --strict (matches CI)
+        entry: mypy --strict yealink-fritzbox-phonebook-sync.py
+        language: system
+        pass_filenames: false
+        types: [python]
