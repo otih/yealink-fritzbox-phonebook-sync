@@ -85,7 +85,7 @@ mkdir phonebook-sync && cd phonebook-sync
 BASE=https://raw.githubusercontent.com/otih/yealink-fritzbox-phonebook-sync/main
 curl -sO $BASE/docker-compose.yml
 curl -sO $BASE/.env.example && mv .env.example .env
-# Edit .env — set FB_USER, FB_PASSWORD, SYNC_SERVER_URL, SYNC_AUTH_USER, SYNC_AUTH_PASSWORD
+# Edit .env — set SYNC_FRITZBOX_USER, SYNC_FRITZBOX_PASSWORD, SYNC_SERVER_URL, SYNC_AUTH_USER, SYNC_AUTH_PASSWORD
 nano .env
 
 docker compose up -d          # pulls ghcr.io/otih/yealink-fritzbox-phonebook-sync:0.13.4
@@ -118,8 +118,8 @@ The `docker-compose.yml` pins a concrete version by default (`0.13.4`) for repro
 ```bash
 # Create the secret with your Fritzbox credentials and phonebook auth
 kubectl create secret generic fritzbox-creds \
-  --from-literal=FB_USER=phonebook \
-  --from-literal=FB_PASSWORD='your-password' \
+  --from-literal=SYNC_FRITZBOX_USER=phonebook \
+  --from-literal=SYNC_FRITZBOX_PASSWORD='your-password' \
   --from-literal=SYNC_AUTH_USER=phonebook \
   --from-literal=SYNC_AUTH_PASSWORD='your-auth-password'
 
@@ -208,14 +208,14 @@ In Docker (WORKDIR is `/app`):
 
 ```bash
 docker run --rm --network host \
-  -e FB_HOST=fritz.box -e FB_USER=YOUR_USER -e FB_PASSWORD=YOUR_PASSWORD \
+  -e SYNC_FRITZBOX_HOST=fritz.box -e SYNC_FRITZBOX_USER=YOUR_USER -e SYNC_FRITZBOX_PASSWORD=YOUR_PASSWORD \
   --entrypoint python3 ghcr.io/otih/yealink-fritzbox-phonebook-sync:latest \
   /app/yealink-fritzbox-phonebook-sync.py --check
 ```
 
 ### Phonebook selection
 
-The `FB_PHONEBOOK_ID` setting (or `--phonebook-id` flag) controls which phonebooks appear on the phone:
+The `SYNC_FRITZBOX_PHONEBOOK_ID` setting (or `--phonebook-id` flag) controls which phonebooks appear on the phone:
 
 | Setting | Behavior on the phone |
 |---------|----------------------|
@@ -231,11 +231,11 @@ All configuration is via environment variables. CLI flags override env vars but 
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `FB_HOST` | `fritz.box` | Fritzbox hostname or IP |
-| `FB_PORT` | `49000` | TR-064 port |
-| `FB_USER` | *(required)* | Fritzbox user with Heimnetz access |
-| `FB_PASSWORD` | *(required)* | Fritzbox user password |
-| `FB_PHONEBOOK_ID` | *(auto)* | Comma-separated phonebook IDs. Single = one entry; multiple = selectable list; empty = all |
+| `SYNC_FRITZBOX_HOST` | `fritz.box` | Fritzbox hostname or IP |
+| `SYNC_FRITZBOX_PORT` | `49000` | TR-064 port |
+| `SYNC_FRITZBOX_USER` | *(required)* | Fritzbox user with Heimnetz access |
+| `SYNC_FRITZBOX_PASSWORD` | *(required)* | Fritzbox user password |
+| `SYNC_FRITZBOX_PHONEBOOK_ID` | *(auto)* | Comma-separated phonebook IDs. Single = one entry; multiple = selectable list; empty = all |
 | `SYNC_LISTEN_PORT` | `8080` | HTTP listen port |
 | `SYNC_REFRESH_INTERVAL` | `3600` | Seconds between Fritzbox syncs |
 | `SYNC_SERVER_URL` | *(required)* | URL the Yealink phone uses to reach this server |
@@ -378,10 +378,10 @@ Wants=network-online.target
 
 [Service]
 ExecStart=/usr/bin/python3 /opt/yealink-fritzbox-phonebook-sync/yealink-fritzbox-phonebook-sync.py
-Environment=FB_HOST=fritz.box
-Environment=FB_PORT=49000
-Environment=FB_USER=myuser
-Environment=FB_PASSWORD=mypassword
+Environment=SYNC_FRITZBOX_HOST=fritz.box
+Environment=SYNC_FRITZBOX_PORT=49000
+Environment=SYNC_FRITZBOX_USER=myuser
+Environment=SYNC_FRITZBOX_PASSWORD=mypassword
 Environment=SYNC_LISTEN_PORT=8080
 Environment=SYNC_REFRESH_INTERVAL=3600
 Environment=SYNC_SERVER_URL=http://192.168.1.50:8080
@@ -412,7 +412,7 @@ journalctl -u yealink-fritzbox-phonebook-sync -f   # follow logs
 | `713 SpecifiedArrayIndexInvalid` | Phonebook ID does not exist — check available IDs (see above) |
 | Phone shows "Remote dir download fail" | Server unreachable from phone's subnet, or wrong `SYNC_SERVER_URL` |
 | Phone shows empty phonebook | Sync hasn't completed yet — check `/health` endpoint |
-| Phone shows "Telefonbuch (0)" with no contacts | Phonebook 0 contains only internal numbers — use `FB_PHONEBOOK_ID=1` to hide it |
+| Phone shows "Telefonbuch (0)" with no contacts | Phonebook 0 contains only internal numbers — use `SYNC_FRITZBOX_PHONEBOOK_ID=1` to hide it |
 | Old data after Fritzbox change | Phone caches remotely; force refresh by toggling the remote phonebook entry off/on in the Yealink web UI |
 
 ## Limitations

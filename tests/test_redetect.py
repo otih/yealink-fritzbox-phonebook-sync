@@ -1,6 +1,6 @@
 """Tests for periodic phonebook-ID re-detection in the sync loop.
 
-When FB_PHONEBOOK_ID is unset (auto-detect), ONE running sync_loop must
+When SYNC_FRITZBOX_PHONEBOOK_ID is unset (auto-detect), ONE running sync_loop must
 re-fetch the phonebook ID list on every cycle — a phonebook created on
 the Fritzbox at runtime appears on the phone without a restart. With an
 explicitly configured ID list, the list is used verbatim forever.

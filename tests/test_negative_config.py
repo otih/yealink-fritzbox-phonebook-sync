@@ -37,9 +37,9 @@ class TestNegativeEnvValues:
     the error (NOT a bare traceback)."""
 
     def test_fb_port_garbage(self):
-        code, out = run_app({"FB_PORT": "abc"})
+        code, out = run_app({"SYNC_FRITZBOX_PORT": "abc"})
         assert code == 1
-        assert "FB_PORT" in out, "error must name the variable, got: %s" % out[:200]
+        assert "SYNC_FRITZBOX_PORT" in out, "error must name the variable, got: %s" % out[:200]
 
     def test_sync_listen_port_garbage(self):
         code, out = run_app({"SYNC_LISTEN_PORT": "xyz"})
@@ -55,8 +55,12 @@ class TestNegativeEnvValues:
         # Range validation lives in _validate_config, which runs on the
         # STARTUP path (not with --version, which exits in argparse).
         # Minimal valid credentials get us past the credential check to
-        # the validator; FB_PORT=70000 must be rejected with the key named.
-        env = {"FB_PORT": "70000", "FB_USER": "u", "FB_PASSWORD": "p"}
+        # the validator; SYNC_FRITZBOX_PORT=70000 must be rejected with the key named.
+        env = {
+            "SYNC_FRITZBOX_PORT": "70000",
+            "SYNC_FRITZBOX_USER": "u",
+            "SYNC_FRITZBOX_PASSWORD": "p",
+        }
         full_env = dict(os.environ)
         full_env.update(env)
         proc = subprocess.run(
@@ -68,7 +72,7 @@ class TestNegativeEnvValues:
         )
         assert proc.returncode == 1
         out = proc.stdout + proc.stderr
-        assert "fritzbox_port" in out or "FB_PORT" in out, out[:300]
+        assert "fritzbox_port" in out or "SYNC_FRITZBOX_PORT" in out, out[:300]
 
     def test_sync_dedup_contacts_garbage(self):
         code, out = run_app({"SYNC_DEDUP_CONTACTS": "treu"})
@@ -78,7 +82,7 @@ class TestNegativeEnvValues:
     def test_no_traceback_on_garbage(self):
         """A raw traceback means the error escaped argparse construction —
         the user sees Python internals instead of 'which variable is wrong'."""
-        code, out = run_app({"FB_PORT": "abc"})
+        code, out = run_app({"SYNC_FRITZBOX_PORT": "abc"})
         assert code == 1
         assert "Traceback" not in out, "garbage env values must not crash with a traceback"
 
@@ -90,7 +94,7 @@ class TestValidEnvStillWorks:
     def test_valid_values_pass(self):
         code, out = run_app(
             {
-                "FB_PORT": "49000",
+                "SYNC_FRITZBOX_PORT": "49000",
                 "SYNC_LISTEN_PORT": "8080",
                 "SYNC_REFRESH_INTERVAL": "3600",
                 "SYNC_DEDUP_CONTACTS": "1",

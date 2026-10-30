@@ -6,8 +6,8 @@
 #
 # Create the secret first (do NOT commit real credentials):
 #   kubectl create secret generic fritzbox-creds \
-#     --from-literal=FB_USER=phonebook \
-#     --from-literal=FB_PASSWORD='your-password'
+#     --from-literal=SYNC_FRITZBOX_USER=phonebook \
+#     --from-literal=SYNC_FRITZBOX_PASSWORD='your-password'
 #
 # Adjust SYNC_SERVER_URL in the Deployment below to match the
 # Service name (or an external IP the Yealink can reach).
@@ -20,8 +20,8 @@ metadata:
     app: yealink-fritzbox-phonebook-sync
 type: Opaque
 stringData:
-  FB_USER: "CHANGE_ME"
-  FB_PASSWORD: "CHANGE_ME"
+  SYNC_FRITZBOX_USER: "CHANGE_ME"
+  SYNC_FRITZBOX_PASSWORD: "CHANGE_ME"
   SYNC_AUTH_USER: "CHANGE_ME"
   SYNC_AUTH_PASSWORD: "CHANGE_ME"
 
@@ -59,21 +59,21 @@ spec:
               name: http
               protocol: TCP
           env:
-            - name: FB_HOST
+            - name: SYNC_FRITZBOX_HOST
               value: "fritz.box"
-            - name: FB_PORT
+            - name: SYNC_FRITZBOX_PORT
               value: "49000"
-            - name: FB_USER
+            - name: SYNC_FRITZBOX_USER
               valueFrom:
                 secretKeyRef:
                   name: fritzbox-creds
-                  key: FB_USER
-            - name: FB_PASSWORD
+                  key: SYNC_FRITZBOX_USER
+            - name: SYNC_FRITZBOX_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: fritzbox-creds
-                  key: FB_PASSWORD
-            - name: FB_PHONEBOOK_ID
+                  key: SYNC_FRITZBOX_PASSWORD
+            - name: SYNC_FRITZBOX_PHONEBOOK_ID
               value: "1"
             - name: SYNC_LISTEN_PORT
               value: "8080"
