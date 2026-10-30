@@ -65,7 +65,10 @@ def test_fb_env_names_are_gone():
     # --version exits 0.
     r = subprocess.run(
         [sys.executable, APP, "--version"],
-        capture_output=True, text=True, env=env, timeout=30,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=30,
     )
     assert r.returncode == 0
     assert "legacy-should-be-ignored" not in r.stdout + r.stderr
