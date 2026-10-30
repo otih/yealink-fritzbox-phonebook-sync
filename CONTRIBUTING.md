@@ -25,9 +25,13 @@ Both tools install with `pip install ruff pytest`.
 
 ## Ground rules
 
-1. **Security scan before every commit.** `ruff check --select S,B` must pass
-   on production code. If a finding must stay, document the risk acceptance
-   at the code site (`# noqa: SZxxx — rationale`) — never silence silently.
+1. **Security scan is a CI gate.** ruff's `S` (bandit) rules run on every
+   push as part of the lint job — the manual pre-commit scan was discipline,
+   not enforcement. If a finding must stay, document the acceptance in the
+   `ignore` list in `pyproject.toml` (one place, machine-readable, with a
+   rationale comment referencing docs/threat-model.md) — never silence
+   silently. In-code `# noqa` comments remain as site-level documentation
+   but the authoritative list lives in pyproject.
 2. **TDD for new features.** Write the failing test first
    (`tests/test_*.py`), then the implementation. The CI test matrix
    (Python 3.13/3.14/3.15) catches version-specific regressions.

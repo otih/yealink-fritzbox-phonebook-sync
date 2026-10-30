@@ -208,7 +208,7 @@ class TestEscapeXml:
 
 class TestConvertSinglePhonebook:
     def test_returns_name_and_count(self):
-        name, contacts, count = yfps.convert_single_phonebook(SAMPLE_PHONEBOOK)
+        name, _contacts, count = yfps.convert_single_phonebook(SAMPLE_PHONEBOOK)
         assert name == "Testbook"
         assert count == 2  # Carol has no numbers, excluded
 

@@ -7,6 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.3] - 2026-10-30
+
+### Changed
+
+- **Coverage gate measures branches, not lines** (`--cov-branch` in
+  CI): line coverage counts a line as covered when it executed —
+  even if only one side of its `if` was ever tested. Branch coverage
+  requires both paths. Current: 78% branch (gate stays 70); the
+  number is harder-earned and the metric honest.
+
+### Fixed
+
+- **Python support floor made honest: 3.9+, not 3.8+.** README and
+  docs claimed "pure Python 3.8+ standard library" while the code
+  uses builtin generics (`dict[str, ...]`) — 3.9+ syntax. CI never
+  tested 3.8. ruff's `target-version` moved py38 -> py39; the
+  UP031/UP032 ignores (kept %-formatting) were re-justified as a
+  deliberate style choice instead of a phantom 3.8 constraint.
+
+### Changed
+
+- **Simplification and perf rules now gated:** `SIM`, `C4`, `PERF`,
+  `RUF` joined the lint selection. All 32 findings resolved: 12
+  auto-fixed, 11 unused unpacked variables removed from tests,
+  single-element slices to `next()` (RUF015), `contextlib.suppress`
+  instead of try/except/pass (SIM105); three deliberate patterns
+  carry per-line `# noqa` with rationale (per-book error isolation
+  in `--check`, the polling loop, explicit metric-line formatting).
+
+### Changed
+
+- **mypy `--strict` is the new type gate.** All 15 strict findings
+  fixed with explicit annotations and no behavior changes: precise
+  generics instead of bare `dict`/`list`/`tuple` (the response dict
+  is `dict[str, object]`, the dedup map is
+  `dict[str, tuple[str, list[tuple[str, str]]]]`), `State` fields
+  annotated (float timestamps — the implicit `int 0` defaults
+  type-mismatched every `time.time()` assignment), boundary casts at
+  `object`-typed dict lookups, `_resolve_host` normalizes getaddrinfo
+  4-tuples to `(host, port)`. CI runs mypy --strict; pyproject sets
+  `strict = true` so local runs match CI exactly.
+
+### Changed
+
+- **Security lint is now a CI gate, not a discipline.** The project
+  rule demanded a `ruff --select S,B` scan before every commit, but
+  nothing enforced it. ruff's bandit (`S`) rules now run in the lint
+  job on every push. Accepted risks (0.0.0.0 bind, scheme-checked URL
+  open, trusted-source XML parse, RFC 7616 MD5 digest) moved from
+  scattered `# noqa` comments into ONE machine-readable `ignore`
+  list in pyproject.toml with rationale comments; test-typical
+  findings (asserts, dummy credentials, subprocess of the module
+  under test) are per-file-ignored for `tests/`. The 11 in-code
+  noqa comments remain as site documentation.
+- **CI toolchain pinned via `requirements-dev.txt`** (ruff, mypy,
+  pytest, pytest-cov): quality gates must be reproducible — unpinned
+  installs let lint rules drift between runs, failing green commits
+  or silently flagging less. Bumps go through PRs, same discipline
+  as the Docker base image.
+
 ## [0.13.2] - 2026-10-29
 
 ### Fixed

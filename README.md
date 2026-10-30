@@ -7,7 +7,7 @@ A lightweight server that bridges the gap between Fritzbox phonebooks and Yealin
 
 **Tested with:** Yealink AX83H Wi-Fi handset × Fritzbox 7530 AX (FritzOS 8.25), connected via Deutsche Giganetz SIP trunk. Should work with any Yealink phone supporting remote phonebooks and any Fritzbox with TR-064 enabled.
 
-**Zero pip dependencies** — pure Python 3.8+ standard library. The Docker image is ~55 MB (Alpine-based).
+**Zero pip dependencies** — pure Python 3.9+ standard library. The Docker image is ~55 MB (Alpine-based).
 
 ## Why this exists
 
@@ -88,7 +88,7 @@ curl -sO $BASE/.env.example && mv .env.example .env
 # Edit .env — set FB_USER, FB_PASSWORD, SYNC_SERVER_URL, SYNC_AUTH_USER, SYNC_AUTH_PASSWORD
 nano .env
 
-docker compose up -d          # pulls ghcr.io/otih/yealink-fritzbox-phonebook-sync:0.13.2
+docker compose up -d          # pulls ghcr.io/otih/yealink-fritzbox-phonebook-sync:0.13.3
 docker compose logs -f
 docker compose down           # stop (graceful, ~1-2s)
 ```
@@ -103,7 +103,7 @@ nano .env
 docker compose up -d
 ```
 
-The `docker-compose.yml` pins a concrete version by default (`0.13.2`) for reproducible deployments — switch to `latest` if you prefer automatic updates, or `build: .` to build from source.
+The `docker-compose.yml` pins a concrete version by default (`0.13.3`) for reproducible deployments — switch to `latest` if you prefer automatic updates, or `build: .` to build from source.
 
 **Testing unreleased changes:** the CI publishes a `:dev` image from the [`dev` integration branch](https://github.com/otih/yealink-fritzbox-phonebook-sync/tree/dev) on every push (same CVE gates as releases). To run a test host on the bleeding edge, point a copy of the compose file at it:
 

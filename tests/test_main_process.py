@@ -56,7 +56,7 @@ def _start_server(env_overrides, port=None):
             with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=2) as r:
                 if r.status == 200:
                     return proc, port
-        except Exception:
+        except Exception:  # noqa: PERF203 — polling loop; try/except is the pattern
             if proc.poll() is not None:
                 break
             time.sleep(0.5)
@@ -67,7 +67,7 @@ def _start_server(env_overrides, port=None):
 
 class TestMainStartup:
     def test_banner_with_version(self):
-        proc, port = _start_server({})
+        proc, _port = _start_server({})
         try:
             out = subprocess.run([sys.executable, APP, "--version"], capture_output=True, text=True)
             assert "v" in out.stdout
@@ -103,7 +103,7 @@ class TestMainStartup:
 
 class TestMainShutdown:
     def test_sigterm_stops_gracefully(self):
-        proc, port = _start_server({})
+        proc, _port = _start_server({})
         t0 = time.time()
         proc.send_signal(signal.SIGTERM)
         proc.wait(timeout=10)

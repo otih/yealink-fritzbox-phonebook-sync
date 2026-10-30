@@ -1,0 +1,9 @@
+# Pinned dev/CI toolchain — quality gates must be reproducible.
+# ruff and mypy change rules between minor versions; an unpinned
+# install lets the gate drift (new rules can fail green commits or,
+# worse, silently stop flagging). Bump deliberately via PR, same
+# discipline as the Docker base image.
+ruff==0.17.2
+mypy==1.15.0
+pytest==8.3.5
+pytest-cov==5.0.0
