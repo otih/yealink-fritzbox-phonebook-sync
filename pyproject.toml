@@ -48,6 +48,7 @@ addopts = "-v"
 
 [tool.mypy]
 python_version = "3.13"
+strict = true
 warn_unused_ignores = true
 warn_redundant_casts = true
 # stdlib-only project — no third-party stubs needed
