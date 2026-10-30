@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **mypy `--strict` is the new type gate.** All 15 strict findings
+  fixed with explicit annotations and no behavior changes: precise
+  generics instead of bare `dict`/`list`/`tuple` (the response dict
+  is `dict[str, object]`, the dedup map is
+  `dict[str, tuple[str, list[tuple[str, str]]]]`), `State` fields
+  annotated (float timestamps — the implicit `int 0` defaults
+  type-mismatched every `time.time()` assignment), boundary casts at
+  `object`-typed dict lookups, `_resolve_host` normalizes getaddrinfo
+  4-tuples to `(host, port)`. CI runs mypy --strict; pyproject sets
+  `strict = true` so local runs match CI exactly.
+
+### Changed
+
 - **Security lint is now a CI gate, not a discipline.** The project
   rule demanded a `ruff --select S,B` scan before every commit, but
   nothing enforced it. ruff's bandit (`S`) rules now run in the lint

@@ -52,7 +52,10 @@ jobs:
         run: ruff format --check yealink-fritzbox-phonebook-sync.py tests/
 
       - name: Type-check
-        run: mypy yealink-fritzbox-phonebook-sync.py
+        # --strict: the strongest static guarantee — no untyped defs, no
+        # implicit Any returns, explicit generics. All 15 pre-strict errors
+        # were fixed in the type-annotation pass (no behavior changes).
+        run: mypy --strict yealink-fritzbox-phonebook-sync.py
 
       - name: Image-pin gate (no :latest in shipped manifests)
         # docker-compose.yml and k8s.yaml must pin a concrete release

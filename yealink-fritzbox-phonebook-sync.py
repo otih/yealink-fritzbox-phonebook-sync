@@ -61,6 +61,7 @@ import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import cast
 from urllib.request import urlopen
 
 logger = logging.getLogger("fritz-pb-sync")
@@ -258,19 +259,23 @@ def _parse_int_env(name: str, default: str) -> int:
         raise ValueError("Invalid %s value %r (must be an integer)" % (name, raw)) from None
 
 
-def _validate_config(cfg: dict) -> None:
+def _validate_config(cfg: dict[str, object]) -> None:
     """Validate configuration values; raise ValueError with the offending key."""
-    if not (1 <= cfg["fritzbox_port"] <= 65535):
-        raise ValueError("fritzbox_port must be 1-65535, got %d" % cfg["fritzbox_port"])
-    if not (1 <= cfg["listen_port"] <= 65535):
-        raise ValueError("listen_port must be 1-65535, got %d" % cfg["listen_port"])
-    if cfg["refresh_interval"] <= 0:
-        raise ValueError("refresh_interval must be positive, got %d" % cfg["refresh_interval"])
-    if cfg["phonebook_id"]:
-        for part in cfg["phonebook_id"].split(","):
+    fritzbox_port = cfg["fritzbox_port"]
+    listen_port = cfg["listen_port"]
+    refresh_interval = cfg["refresh_interval"]
+    phonebook_id = cfg["phonebook_id"]
+    if not isinstance(fritzbox_port, int) or not (1 <= fritzbox_port <= 65535):
+        raise ValueError("fritzbox_port must be 1-65535, got %r" % fritzbox_port)
+    if not isinstance(listen_port, int) or not (1 <= listen_port <= 65535):
+        raise ValueError("listen_port must be 1-65535, got %r" % listen_port)
+    if not isinstance(refresh_interval, int) or refresh_interval <= 0:
+        raise ValueError("refresh_interval must be positive, got %r" % refresh_interval)
+    if isinstance(phonebook_id, str) and phonebook_id:
+        for part in phonebook_id.split(","):
             if not part.strip().isdigit():
                 raise ValueError(
-                    "phonebook_id must be comma-separated integers, got %r" % cfg["phonebook_id"]
+                    "phonebook_id must be comma-separated integers, got %r" % phonebook_id
                 )
 
 
@@ -286,7 +291,7 @@ def _validate_config(cfg: dict) -> None:
 # dependency for no practical gain here; revisit if the trust model changes.
 
 
-def _resolve_host(host: str) -> tuple[int, tuple]:
+def _resolve_host(host: str) -> tuple[int, tuple[str, int]]:
     """Resolve a host for TR-064 SOAP calls, family-tolerant.
 
     History: this project's author network resolves fritz.box IPv6-only
@@ -309,8 +314,11 @@ def _resolve_host(host: str) -> tuple[int, tuple]:
     v6 = [i for i in infos if i[0] == socket.AF_INET6]
     v4 = [i for i in infos if i[0] == socket.AF_INET]
     chosen = (v6 or v4 or infos)[0]
-    family, _type, _proto, _canon, sockaddr = chosen
-    return family, sockaddr
+    family, _type, _proto, _canon, raw_sockaddr = chosen
+    # getaddrinfo returns 4-tuples for IPv6 (flowinfo, scopeid) — the
+    # extra fields are zero defaults; (host, port) is what connect needs.
+    host_addr, port = raw_sockaddr[0], raw_sockaddr[1]
+    return int(family), (str(host_addr), int(port))
 
 
 class FritzboxClient:
@@ -409,7 +417,8 @@ class FritzboxClient:
                 )
                 time.sleep(CHALLENGE_RETRY_DELAY)
                 continue
-            auth_hdr = resp["headers"].get("WWW-Authenticate", "")
+            resp_headers = cast("dict[str, str]", resp.get("headers", {}))
+            auth_hdr = resp_headers.get("WWW-Authenticate", "")
             if auth_hdr:
                 break
             time.sleep(CHALLENGE_RETRY_DELAY)
@@ -421,7 +430,7 @@ class FritzboxClient:
                     % (action, MAX_CHALLENGE_RETRIES, last_exc)
                 )
             # No auth required — return whatever we got
-            return resp["body"]
+            return str(resp["body"])
 
         # Step 2: POST with digest auth
         auth_header = self._build_digest_auth(auth_hdr, self.control_path)
@@ -429,12 +438,13 @@ class FritzboxClient:
             self.control_path, body, dict(base_headers, Authorization=auth_header)
         )
 
-        if resp["status"] != 200:
-            logger.error("SOAP %s HTTP %d: %s", action, resp["status"], resp["body"][:500])
-            raise RuntimeError("SOAP %s failed: HTTP %d" % (action, resp["status"]))
-        return resp["body"]
+        status = int(cast(int, resp["status"]))
+        if status != 200:
+            logger.error("SOAP %s HTTP %d: %s", action, status, str(resp["body"])[:500])
+            raise RuntimeError("SOAP %s failed: HTTP %d" % (action, status))
+        return str(resp["body"])
 
-    def _raw_post(self, path: str, body: bytes, headers: dict[str, str]) -> dict:
+    def _raw_post(self, path: str, body: bytes, headers: dict[str, str]) -> dict[str, object]:
         """Send an HTTP POST via raw socket, return parsed response.
 
         Ensures the socket is always closed, even on error.
@@ -538,7 +548,7 @@ class FritzboxClient:
             raise ValueError("Refusing non-HTTP phonebook URL: %s" % url[:120])
         logger.info("Downloading phonebook %d from %s", phonebook_id, url)
         resp = urlopen(url, timeout=DOWNLOAD_TIMEOUT)  # noqa: S310 — scheme whitelisted above
-        return resp.read()
+        return bytes(resp.read())
 
     def fetch_all_phonebooks(self, ids: list[int]) -> bytes:
         """Download multiple phonebooks. Returns concatenated bytes.
@@ -636,7 +646,7 @@ def convert_single_phonebook(
         # Dedup map is scoped to ONE phonebook element: the same name in
         # two different <phonebook> blocks must remain separate entries.
         # key → [display_name, [(number, label), ...]]
-        merged: dict[str, list] = {}
+        merged: dict[str, tuple[str, list[tuple[str, str]]]] = {}
         passthrough: list[tuple[str, list[tuple[str, str]]]] = []
         for contact in phonebook:
             if _strip_ns(contact.tag) != "contact":
@@ -683,8 +693,9 @@ def convert_single_phonebook(
             # to one <Telephone> keeping the first non-empty label.
             key = _sort_key(name)
             if key not in merged:
-                merged[key] = [name, []]
-            existing = merged[key][1]
+                merged[key] = (name, [])
+            entry = merged[key]
+            existing = entry[1]
             for num, label in numbers:
                 for i, (enum, elabel) in enumerate(existing):
                     if enum == num:
@@ -720,7 +731,7 @@ def convert_single_phonebook(
     return pb_name, contacts_str, count
 
 
-def build_menu_xml(phonebooks: list[dict], server_base: str) -> str:
+def build_menu_xml(phonebooks: list[dict[str, object]], server_base: str) -> str:
     """
     Build the YealinkIPPhoneMenu listing all phonebooks as selectable entries.
 
@@ -740,13 +751,17 @@ def build_menu_xml(phonebooks: list[dict], server_base: str) -> str:
         # Combined directory first: makes /all.xml discoverable for menu
         # drill-in phones; the count is the total across all books.
         lines.append("  <MenuItem>")
-        lines.append("    <Name>All contacts (%d)</Name>" % sum(pb["count"] for pb in phonebooks))
+        lines.append(
+            "    <Name>All contacts (%d)</Name>" % sum(cast(int, pb["count"]) for pb in phonebooks)
+        )
         lines.append("    <URL>%s/all.xml</URL>" % base)
         lines.append("  </MenuItem>")
     for pb in phonebooks:
         lines.append("  <MenuItem>")
-        lines.append("    <Name>%s (%d)</Name>" % (_escape_xml(pb["name"]), pb["count"]))
-        lines.append("    <URL>%s/contacts/%d.xml</URL>" % (base, pb["id"]))
+        lines.append(
+            "    <Name>%s (%d)</Name>" % (_escape_xml(str(pb["name"])), cast(int, pb["count"]))
+        )
+        lines.append("    <URL>%s/contacts/%d.xml</URL>" % (base, cast(int, pb["id"])))
         lines.append("  </MenuItem>")
     lines.append("</YealinkIPPhoneMenu>")
     return "\n".join(lines) + "\n"
@@ -813,21 +828,21 @@ def build_all_xml() -> str:
 
 
 class State:
-    def __init__(self):
+    def __init__(self) -> None:
         self.menu_xml = ""
-        self.contacts = {}  # {phonebook_id: contacts_xml_str}
-        self.pb_meta = []  # [{id, name, count}]
-        self.last_sync = 0
+        self.contacts: dict[int, str] = {}  # {phonebook_id: contacts_xml_str}
+        self.pb_meta: list[dict[str, object]] = []  # [{id, name, count}]
+        self.last_sync: float = 0.0
         self.total_contacts = 0
         self.sync_successes = 0
         self.sync_failures = 0
-        # Phone-side activity: when did a phone last fetch a phonebook
-        # (menu.xml or contacts/<id>.xml)? 0 = never.
-        self.last_phone_fetch = 0
         self.phone_fetches = 0
-        # Per-IP phone-side activity: {ip: timestamp}. Bounded to the 10
-        # most recently seen IPs (cardinality safety on /metrics).
+        self.last_phone_fetch: float = 0.0
         self.phone_fetch_ips: dict[str, float] = {}
+        # Phone-side activity comments live with the annotated fields above;
+        # mypy --strict required explicit types (dict[str, float], float
+        # timestamps) — the previous implicit int 0 defaults type-mismatched
+        # every time.time() assignment.
         # Configured sync interval (seconds) — basis for the degraded
         # evaluation on /metrics. 0 = unknown (treated as never degraded).
         self.refresh_interval = 0
@@ -1002,7 +1017,7 @@ def _make_server(
         ctx.load_cert_chain(tls_cert, tls_key)
         orig_get_request = srv.get_request
 
-        def _tls_get_request():
+        def _tls_get_request() -> tuple[socket.socket, tuple[str, int]]:
             sock, addr = orig_get_request()
             return ctx.wrap_socket(sock, server_side=True), addr
 
@@ -1112,9 +1127,9 @@ class PhonebookHandler(BaseHTTPRequestHandler):
         """
         with state.lock:
             state.phone_fetches += 1
-            state.last_phone_fetch = time.time()
+            state.last_phone_fetch = float(time.time())
             ip = self.client_address[0]
-            state.phone_fetch_ips[ip] = time.time()
+            state.phone_fetch_ips[ip] = float(time.time())
             # Cardinality bound: prune eagerly on EVERY fetch so the map
             # can never linger above the limit (the /metrics emitter also
             # prunes defensively — see do_GET).
@@ -1206,9 +1221,9 @@ class PhonebookHandler(BaseHTTPRequestHandler):
                         lines.append(
                             'yfps_phonebook_contacts{id="%d",name="%s"} %d'
                             % (
-                                pb["id"],
-                                self._prom_escape_label(pb["name"]),
-                                pb["count"],
+                                cast(int, pb["id"]),
+                                self._prom_escape_label(str(pb["name"])),
+                                cast(int, pb["count"]),
                             )
                         )
                 # Per-IP phone-side fetch age — WHICH phone last pulled
@@ -1302,7 +1317,7 @@ def _backoff_delay(consecutive_failures: int, refresh_interval: int) -> int:
     while a persistently unreachable box is not hammered every minute.
     """
     delay = BACKOFF_BASE_SECONDS * (2**consecutive_failures)
-    return min(delay, refresh_interval)
+    return int(min(delay, refresh_interval))
 
 
 def sync_once(
