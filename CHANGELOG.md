@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Vulnerability scan workflow closes its tracking issue on a clean
+  scan.** The `vulnerability-scan` issue previously stayed open forever
+  once created, even after the finding was fixed and the image scanned
+  clean. The weekly `scan.yml` run now closes any open
+  `vulnerability-scan` issue (with an explanatory comment) when the
+  published image has no fixable CRITICAL/HIGH findings; a later run
+  with findings creates a fresh issue as before.
+
 ## [0.15.0] - 2026-10-30
 
 ### Changed
