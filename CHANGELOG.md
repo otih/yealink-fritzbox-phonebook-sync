@@ -18,6 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `vulnerability-scan` issue (with an explanatory comment) when the
   published image has no fixable CRITICAL/HIGH findings; a later run
   with findings creates a fresh issue as before.
+- **CI actions updated (dependabot #95–#99), fixing the Node.js 20
+  deprecation warning:** `github/codeql-action/upload-sarif`
+  3.29.0 → 4.39.1 — the old v3.29.0 still targeted Node.js 20 and was
+  force-run on Node.js 24 by the runners, warning on every weekly
+  scan (the warning noted in issue #100). Also bumped:
+  `docker/setup-buildx-action` 3.12.0 → 4.4.1,
+  `docker/login-action` 3.7.0 → 4.7.0,
+  `actions/upload-pages-artifact` 3.0.1 → 5.0.0,
+  `anchore/sbom-action` 0.24.0 → 0.24.3.
 
 ## [0.15.0] - 2026-10-30
 
