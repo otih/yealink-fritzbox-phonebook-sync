@@ -97,6 +97,36 @@ jobs:
             });
             console.log('Tracking issue created.');
 
+      # Close the tracking issue once a scan comes back clean, so the
+      # issue reflects the CURRENT image state and cannot go stale.
+      - name: Close tracking issue on clean scan
+        if: steps.findings.outputs.count == '0'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9
+        with:
+          script: |
+            const label = 'vulnerability-scan';
+            const openIssues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: label,
+            });
+            for (const issue of openIssues.data) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                state: 'closed',
+              });
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: 'Closing automatically: the latest scan of the published image found no fixable CRITICAL/HIGH vulnerabilities. Reopened if new findings appear.',
+              });
+              console.log(`Closed tracking issue #${issue.number}.`);
+            }
+
       - name: Fail the workflow on findings
         if: steps.findings.outputs.count != '0'
         run: |
