@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING: Python support floor raised to 3.13** (was 3.9,
+  EOL since 2025-10). Python 3.9–3.12 are no longer supported;
+  the CI matrix (3.13/3.14/3.15) and the Docker image
+  (python:3.15-alpine) were already at or above this floor —
+  this makes the declared support honest. ruff's `target-version`
+  moved py39 → py313, enabling modern-syntax UP rules: `datetime.UTC`
+  alias, `TimeoutError` replaces the aliased `socket.timeout`.
+  Runs on any current Python; if you run the script on a host older
+  than 3.13, stay on v0.15.x.
+
 ## [0.15.1] - 2026-11-22
 
 ### Changed
