@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   parser — the legacy parser is scheduled for removal in early 2027).
   `mypy --strict` on this codebase: no findings — the strict gate
   passes unchanged.
+- **Test toolchain: pytest 9.2.0 + pytest-cov 7.1.0** (was 8.3.5 /
+  5.0.0). Major bumps on both sides of the pair; the full suite
+  (174 tests) runs green, coverage reporting and the 75% branch
+  gate behave identically (78.9% actual).
 
 ## [0.15.1] - 2026-11-22
 
