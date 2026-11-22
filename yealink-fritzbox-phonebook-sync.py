@@ -60,7 +60,7 @@ import sys
 import threading
 import time
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import cast
 from urllib.request import urlopen
@@ -151,7 +151,7 @@ class _JsonLogFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         payload = {
-            "ts": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
+            "ts": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "msg": record.getMessage(),
@@ -514,7 +514,7 @@ class FritzboxClient:
                     if not chunk:
                         break
                     chunks.append(chunk)
-                except socket.timeout:
+                except TimeoutError:
                     break
         finally:
             sock.close()
@@ -1565,7 +1565,7 @@ def _run_check(client: FritzboxClient, phonebook_id_arg: str) -> int:
                     "WARN: phonebook %d '%s': 0 usable contacts "
                     "(only internal numbers or empty)" % (pid, name)
                 )
-        except Exception as exc:  # noqa: PERF203 — per-book isolation is the design: one failing book must not abort the check
+        except Exception as exc:
             print("FAIL: cannot fetch/convert phonebook %d: %s" % (pid, exc))
             exit_code = 1
     if exit_code:
