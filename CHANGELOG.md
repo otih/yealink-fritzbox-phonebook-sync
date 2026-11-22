@@ -31,6 +31,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on the new version, no rule changes affecting this codebase
   (0.17.3-0.17.5 are bugfix/performance releases).
 
+### Fixed
+
+- **Password no longer leaked to the log in plain text.** The startup log
+  line "External URL (with embedded auth): http://user:PASSWORD@host"
+  printed the actual Basic-Auth password — readable by anyone with access
+  to the container log (Docker JSON-file driver, journald, log
+  collectors), contradicting the threat model's "Credentials never
+  logged" promise. The URL delivered to the phone still carries the real
+  password (the phone needs it); only the log line is masked now
+  (`user:***@host`). Found during a code review; pinned by a regression
+  test (`tests/test_log_masking.py`) that asserts the password never
+  appears in the log output.
+
 ## [0.15.1] - 2026-11-22
 
 ### Changed
