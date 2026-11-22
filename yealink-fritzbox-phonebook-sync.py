@@ -51,8 +51,8 @@ import ipaddress
 import json
 import logging
 import os
-import random
 import re
+import secrets
 import signal
 import socket
 import ssl
@@ -389,7 +389,12 @@ class FritzboxClient:
         ha2 = hashlib.md5(f"POST:{uri}".encode()).hexdigest()
 
         if qop:
-            cnonce = "%032x" % random.getrandbits(128)
+            # CSPRNG cnonce (RFC 7616: >= 64 bits of entropy): the
+            # Mersenne-Twister PRNG's state can be reconstructed from
+            # observed outputs, letting a MITM predict future cnonces.
+            # secrets.token_hex(16) = 128 bits from the OS CSPRNG, same
+            # 32-hex-digit format.
+            cnonce = secrets.token_hex(16)
             nc = "00000001"
             response = hashlib.md5(f"{ha1}:{nonce}:{nc}:{cnonce}:{qop}:{ha2}".encode()).hexdigest()
             return (

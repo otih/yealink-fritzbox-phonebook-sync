@@ -67,6 +67,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   logging preserved). Pinned by regression tests that assert on the
   live server socket (404, 401 and health paths) — no Python/ or
   BaseHTTP string in any response.
+- **Digest-Auth cnonce now from a CSPRNG** (was: Mersenne-Twister).
+  The cnonce in HTTP Digest Auth (RFC 7616) protects against replay
+  attacks and requires at least 64 bits of entropy from a
+  cryptographically secure source. `random.getrandbits(128)` used
+  the Mersenne-Twister PRNG, whose state can be reconstructed from
+  observed outputs — a man-in-the-middle observing cnonces could
+  predict future values. Replaced with `secrets.token_hex(16)`
+  (OS CSPRNG, same 128 bits, same 32-hex-digit format); the `random`
+  import is gone from the module entirely. Pinned by a regression
+  test asserting the module no longer uses the `random` module for
+  the digest path.
 
 ## [0.15.1] - 2026-11-22
 
