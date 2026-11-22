@@ -25,7 +25,7 @@ otherwise) and whether the Fritzbox sync is healthy.
 | `yfps_phonebook_fetch_age_seconds` | gauge | Seconds since a phone last downloaded a phonebook (`-1` = never). Mirrors `yfps_sync_age_seconds` on the phone side. |
 | `yfps_phonebook_fetch_age_seconds_by_ip{ip="…"}` | gauge | Seconds since the phone at this client IP last downloaded a phonebook — **which** handset last pulled (multi-handset setups). Bounded to the 10 most recently seen IPs. |
 | `yfps_contacts_total` | gauge | Total contacts across all served phonebooks (after filtering). |
-| `yfps_phonebook_contacts{id="…", name="…"}` | gauge | Contact count **per phonebook** (one line per served phonebook). A shrinking source — e.g. a broken Google import into the Fritzbox — is visible per phonebook instead of only in the global sum. |
+| `yfps_phonebook_contacts{id="…"}` | gauge | Contact count **per phonebook** (one line per served phonebook). A shrinking source — e.g. a broken Google import into the Fritzbox — is visible per phonebook instead of only in the global sum. The label carries the book **ID only**: `/metrics` is auth-free and phonebook names are private metadata — join with `/menu.xml` (auth-protected) to map IDs to names. |
 | `yfps_phonebooks_total` | gauge | Number of phonebooks currently served. |
 
 **Interpretation guide:** `yfps_sync_age_seconds` should always be below your

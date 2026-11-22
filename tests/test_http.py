@@ -272,9 +272,12 @@ class TestRouting:
 
 
 class TestPerPhonebookMetrics:
-    """yfps_phonebook_contacts{id=..., name=...}: contact count per
+    """yfps_phonebook_contacts{id=...}: contact count per
     phonebook — a shrinking source (e.g. broken Google import into the
-    Fritzbox) becomes visible per phonebook, not just in the global sum."""
+    Fritzbox) becomes visible per phonebook, not just in the global sum.
+    The label carries the book ID only: /metrics is auth-free and
+    phonebook NAMES are private metadata — the id→name mapping lives
+    in the auth-protected /menu.xml (red-team audit 2026-11-22)."""
 
     def test_per_phonebook_gauge_emitted(self, server):
         base, st = server
@@ -286,8 +289,8 @@ class TestPerPhonebookMetrics:
         status, body = _get(base + "/metrics")
         assert status == 200
         assert "# TYPE yfps_phonebook_contacts gauge" in body
-        assert 'yfps_phonebook_contacts{id="1",name="Work"} 193' in body
-        assert 'yfps_phonebook_contacts{id="2",name="Privat"} 42' in body
+        assert 'yfps_phonebook_contacts{id="1"} 193' in body
+        assert 'yfps_phonebook_contacts{id="2"} 42' in body
 
     def test_empty_state_emits_no_gauge_lines(self, server):
         base, st = server
@@ -297,14 +300,16 @@ class TestPerPhonebookMetrics:
         assert status == 200
         assert "yfps_phonebook_contacts{" not in body
 
-    def test_phonebook_name_escaped_in_label(self, server):
+    def test_phonebook_name_not_in_metrics(self, server):
+        # The privacy pin: even with a recognizable name in pb_meta, the
+        # auth-free /metrics output must not contain it anywhere.
         base, st = server
         with st.lock:
-            st.pb_meta = [{"id": 3, "name": 'Book "quoted" \\ slash', "count": 1}]
+            st.pb_meta = [{"id": 3, "name": "Familie Müller", "count": 1}]
         status, body = _get(base + "/metrics")
         assert status == 200
-        # Backslash and quote must be escaped per Prometheus label rules
-        assert 'yfps_phonebook_contacts{id="3",name="Book \\"quoted\\" \\\\ slash"} 1' in body
+        assert "Familie Müller" not in body, "phonebook name leaked into auth-free /metrics"
+        assert 'yfps_phonebook_contacts{id="3"} 1' in body
 
 
 class TestPerIpFetchMetrics:

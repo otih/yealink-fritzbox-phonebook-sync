@@ -1341,16 +1341,20 @@ class PhonebookHandler(BaseHTTPRequestHandler):
             ]
             # Per-phonebook contact count — a shrinking source (e.g.
             # broken Google import into the Fritzbox) is visible per
-            # phonebook, not just in the global sum.
+            # phonebook, not just in the global sum. The label carries
+            # the book ID only: /metrics is auth-free and phonebook
+            # NAMES are private metadata (household structure) — the
+            # id→name mapping lives in the auth-protected /menu.xml
+            # (red-team audit 2026-11-22: the name label leaked private
+            # names to every unauthenticated LAN device).
             if state.pb_meta:
                 lines.append("# HELP yfps_phonebook_contacts Contact count per phonebook")
                 lines.append("# TYPE yfps_phonebook_contacts gauge")
                 for pb in state.pb_meta:
                     lines.append(  # noqa: PERF401 — append keeps the metric line format explicit
-                        'yfps_phonebook_contacts{id="%d",name="%s"} %d'
+                        'yfps_phonebook_contacts{id="%d"} %d'
                         % (
                             cast(int, pb["id"]),
-                            self._prom_escape_label(str(pb["name"])),
                             cast(int, pb["count"]),
                         )
                     )
