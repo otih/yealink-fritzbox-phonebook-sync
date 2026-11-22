@@ -64,6 +64,8 @@ def test_concurrent_requests_all_served(server):
 
 
 def test_server_type_is_threading():
-    """The server class must be ThreadingHTTPServer (24/7 requirement:
-    one hung client must not block the health check)."""
-    assert yfps._SERVER_CLASS is yfps.ThreadingHTTPServer
+    """The server class must be a ThreadingHTTPServer (24/7 requirement:
+    one hung client must not block the health check). _QuietDisconnectServer
+    subclasses ThreadingHTTPServer and only overrides handle_error —
+    the threading behavior is inherited unchanged."""
+    assert issubclass(yfps._SERVER_CLASS, yfps.ThreadingHTTPServer)

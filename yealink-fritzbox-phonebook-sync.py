@@ -1035,10 +1035,48 @@ rate_limiter = _RateLimiter()
 tls_enabled = False
 ip_allowlist = _IpAllowlist("")
 
+
 # Threading server: one hung client must never block the health check
 # (24/7 requirement — a single-threaded server would let Docker's
 # HEALTHCHECK time out and restart-loop the container).
-_SERVER_CLASS = ThreadingHTTPServer
+class _QuietDisconnectServer(ThreadingHTTPServer):
+    """ThreadingHTTPServer that logs client disconnects as one line.
+
+    socketserver's default handle_error prints a 40-line separator wall
+    and a full traceback for EVERY handler exception. When a Yealink
+    drops the connection mid-response (short timeout, 408 contacts,
+    flaky Wi-Fi) the handler thread raises BrokenPipeError /
+    ConnectionResetError — an EXPECTED event that must not flood the
+    log (and must not break json-format log pipelines with raw stderr).
+    Expected disconnects log one warning line; every other exception
+    keeps the full traceback — the override must never swallow bugs.
+    """
+
+    def handle_error(
+        self, request: socket.socket | tuple[bytes, socket.socket], client_address: tuple[str, int]
+    ) -> None:
+        exc = sys.exc_info()[1]
+        if isinstance(
+            exc,
+            (
+                BrokenPipeError,
+                ConnectionResetError,
+                ConnectionAbortedError,
+                ssl.SSLEOFError,
+            ),
+        ):
+            logger.warning(
+                "Client %s disconnected mid-response (%s) — ignoring",
+                client_address,
+                type(exc).__name__,
+            )
+            return
+        # Not a client disconnect: surface the full traceback (default
+        # behavior) — real bugs must stay visible in operations.
+        super().handle_error(request, client_address)
+
+
+_SERVER_CLASS = _QuietDisconnectServer
 
 
 def _load_tls_config() -> tuple[str, str] | None:

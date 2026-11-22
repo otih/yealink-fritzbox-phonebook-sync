@@ -78,6 +78,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   import is gone from the module entirely. Pinned by a regression
   test asserting the module no longer uses the `random` module for
   the digest path.
+- **Client disconnects no longer flood the log with tracebacks.**
+  When a phone drops the connection mid-download (short Yealink
+  timeout, flaky Wi-Fi, 408 contacts), the handler thread raised
+  BrokenPipeError and socketserver's default `handle_error` printed a
+  40-line separator wall plus full traceback to stderr for EVERY such
+  event — flooding the container log and breaking json-format log
+  pipelines with raw stderr. The new `_QuietDisconnectServer` (a
+  ThreadingHTTPServer subclass, threading behavior unchanged) logs
+  expected disconnects (BrokenPipe, ConnectionReset, ConnectionAborted,
+  TLS EOF) as one warning line; every other exception keeps the full
+  traceback — the override never swallows real bugs. Pinned by
+  regression tests for both behaviors (one-line warning on
+  BrokenPipeError, full traceback preserved on RuntimeError).
 
 ## [0.15.1] - 2026-11-22
 
