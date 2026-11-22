@@ -91,6 +91,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   traceback — the override never swallows real bugs. Pinned by
   regression tests for both behaviors (one-line warning on
   BrokenPipeError, full traceback preserved on RuntimeError).
+- **Slowloris pinned handler threads forever — fixed with a socket
+  timeout.** BaseHTTPRequestHandler blocks in `rfile.readline()`
+  with no timeout by default: a client that sends one byte of the
+  request line and then goes silent holds the handler thread for as
+  long as the connection stays open. Verified during the red-team
+  audit — 30 stalled connections pinned 30 threads indefinitely
+  (each holding a file descriptor and stack); over time an attacker
+  or broken client exhausts threads/FDs while the Docker HEALTHCHECK
+  keeps passing. `PhonebookHandler.timeout = 30` bounds every
+  connection: readline() raises TimeoutError, the quiet-disconnect
+  handler logs one line, the thread is released. 30s comfortably
+  covers slow phone polls and downloads. Pinned by regression tests:
+  a stalled connection is dropped within the timeout, the handler
+  thread is released, /health keeps serving during and after the
+  attack, and the timeout attribute is never None.
 
 ## [0.15.1] - 2026-11-22
 

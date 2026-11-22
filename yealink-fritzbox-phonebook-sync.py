@@ -1181,6 +1181,18 @@ class PhonebookHandler(BaseHTTPRequestHandler):
     # Yealink phones expect HTTP/1.1; BaseHTTPRequestHandler defaults to 1.0
     protocol_version = "HTTP/1.1"
 
+    # Socket timeout per connection (Slowloris defense, red-team audit
+    # 2026-11-22): BaseHTTPRequestHandler blocks in rfile.readline()
+    # with NO timeout by default — a client that sends one byte of the
+    # request line and then goes silent pins the handler thread for as
+    # long as it holds the socket open (verified: 30 stalled
+    # connections pinned 30 threads indefinitely; each holds an FD and
+    # stack). With the timeout set, readline() raises TimeoutError after
+    # this many seconds; the server's quiet-disconnect handler logs one
+    # line and the thread is released. 30s comfortably covers slow
+    # phone polls and downloads while bounding resource exhaustion.
+    timeout = 30
+
     # Suppress the default `Server: BaseHTTP/0.6 Python/3.x.y` header on
     # every error path (404/401/403/429 via send_error/send_response) —
     # it hands an attacker the exact interpreter version for free
