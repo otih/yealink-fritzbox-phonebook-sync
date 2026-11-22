@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   alias, `TimeoutError` replaces the aliased `socket.timeout`.
   Runs on any current Python; if you run the script on a host older
   than 3.13, stay on v0.15.x.
+- **mypy pinned to 2.4.1** (was 1.15.0): mypy 2.4 supports Python
+  3.15 and uses the new native parser by default (based on the Ruff
+  parser — the legacy parser is scheduled for removal in early 2027).
+  `mypy --strict` on this codebase: no findings — the strict gate
+  passes unchanged.
 
 ## [0.15.1] - 2026-11-22
 
@@ -39,11 +44,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docker/login-action` 3.7.0 → 4.7.0,
   `actions/upload-pages-artifact` 3.0.1 → 5.0.0,
   `anchore/sbom-action` 0.24.0 → 0.24.3.
-- **mypy pinned to 2.4.1** (was 1.15.0): mypy 2.4 supports Python
-  3.15 and uses the new native parser by default (based on the Ruff
-  parser — the legacy parser is scheduled for removal in early 2027).
-  `mypy --strict` on this codebase: no findings, the strict gate
-  passes unchanged.
 
 ## [0.15.0] - 2026-10-30
 
