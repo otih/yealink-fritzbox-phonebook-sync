@@ -1771,12 +1771,16 @@ def _external_urls(args: argparse.Namespace) -> tuple[str, str]:
         # Embed credentials in the external URL for the phone
         # The AX83H does not have separate username/password fields for
         # remote phonebooks, so credentials must be in the URL.
-        if "://" in server_base:
-            scheme, _, rest = server_base.partition("://")
-            external_url = "%s://%s:%s@%s" % (scheme, auth_user, auth_pass, rest)
-        else:
-            external_url = "http://%s:%s@%s" % (auth_user, auth_pass, server_base)
-        logger.info("External URL (with embedded auth): %s", external_url)
+        # The URL itself carries the REAL password (the phone needs it);
+        # only the LOG line below is masked — logging the plain password
+        # would leak it to every reader of the container log, contradicting
+        # the threat model's "Credentials never logged" promise.
+        scheme, _, rest = server_base.partition("://")
+        if not scheme:
+            # No scheme in server_base: default to http (pre-refactor behavior)
+            scheme, rest = "http", server_base
+        external_url = "%s://%s:%s@%s" % (scheme, auth_user, auth_pass, rest)
+        logger.info("External URL (with embedded auth): %s://%s:***@%s", scheme, auth_user, rest)
     else:
         logger.warning("HTTP Basic Auth DISABLED — phonebook is accessible without credentials")
     return server_base, external_url
