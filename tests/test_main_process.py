@@ -56,7 +56,7 @@ def _start_server(env_overrides, port=None):
             with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=2) as r:
                 if r.status == 200:
                     return proc, port
-        except Exception:  # noqa: PERF203 — polling loop; try/except is the pattern
+        except Exception:
             if proc.poll() is not None:
                 break
             time.sleep(0.5)

@@ -283,7 +283,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
           "expr": "yfps_phonebook_contacts{job=\"yealink-phonebook-sync\"}",
-          "legendFormat": "{{name}} ({{id}})",
+          "legendFormat": "phonebook {{id}}",
           "refId": "A"
         }
       ],

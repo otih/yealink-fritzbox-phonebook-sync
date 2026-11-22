@@ -7,6 +7,118 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-11-22
+
+### Changed
+
+- **BREAKING: Python support floor raised to 3.13** (was 3.9,
+  EOL since 2025-10). Python 3.9–3.12 are no longer supported;
+  the CI matrix (3.13/3.14/3.15) and the Docker image
+  (python:3.15-alpine) were already at or above this floor —
+  this makes the declared support honest. ruff's `target-version`
+  moved py39 → py313, enabling modern-syntax UP rules: `datetime.UTC`
+  alias, `TimeoutError` replaces the aliased `socket.timeout`.
+  Runs on any current Python; if you run the script on a host older
+  than 3.13, stay on v0.15.x.
+- **mypy pinned to 2.4.1** (was 1.15.0): mypy 2.4 supports Python
+  3.15 and uses the new native parser by default (based on the Ruff
+  parser — the legacy parser is scheduled for removal in early 2027).
+  `mypy --strict` on this codebase: no findings — the strict gate
+  passes unchanged.
+- **Test toolchain: pytest 9.2.0 + pytest-cov 7.1.0** (was 8.3.5 /
+  5.0.0). Major bumps on both sides of the pair; the full suite
+  (174 tests) runs green, coverage reporting and the 75% branch
+  gate behave identically (78.9% actual).
+- **ruff pinned to 0.17.5** (was 0.17.2): lint and format clean
+  on the new version, no rule changes affecting this codebase
+  (0.17.3-0.17.5 are bugfix/performance releases).
+- **Internal: `_age_or_never()` helper deduplicates the age
+  computation.** The "seconds since X, or -1 when it never happened"
+  expression existed identically in `_render_metrics` and
+  `_serve_health`; the "-1 = never" contract now lives in exactly
+  one place. Pure refactor, no behavior change.
+
+### Removed
+
+- **Dead code: `FritzboxClient.fetch_all_phonebooks` removed.** The
+  method (download all phonebooks as one concatenated blob) had no
+  callers since the per-book fetch refactor — `sync_once` and
+  `--check` fetch each book individually via `fetch_phonebook`, and
+  no test ever called it. A concatenation API does not fit the
+  per-book architecture (menu/contacts per phonebook, cache stores
+  per-book structure); keeping it invited accidental future use.
+
+### Fixed
+
+- **Password no longer leaked to the log in plain text.** The startup log
+  line "External URL (with embedded auth): http://user:PASSWORD@host"
+  printed the actual Basic-Auth password — readable by anyone with access
+  to the container log (Docker JSON-file driver, journald, log
+  collectors), contradicting the threat model's "Credentials never
+  logged" promise. The URL delivered to the phone still carries the real
+  password (the phone needs it); only the log line is masked now
+  (`user:***@host`). Found during a code review; pinned by a regression
+  test (`tests/test_log_masking.py`) that asserts the password never
+  appears in the log output.
+- **Server header no longer leaks the Python version.** Every error
+  response (404/401/403/429) carried `Server: BaseHTTP/0.6
+  Python/3.x.y` by default — the exact interpreter version, handed
+  to any client for free (version-specific exploits, recon). The
+  200 path never sent it; now no path does: `send_response` is
+  overridden to drop the header entirely (Date header and request
+  logging preserved). Pinned by regression tests that assert on the
+  live server socket (404, 401 and health paths) — no Python/ or
+  BaseHTTP string in any response.
+- **Digest-Auth cnonce now from a CSPRNG** (was: Mersenne-Twister).
+  The cnonce in HTTP Digest Auth (RFC 7616) protects against replay
+  attacks and requires at least 64 bits of entropy from a
+  cryptographically secure source. `random.getrandbits(128)` used
+  the Mersenne-Twister PRNG, whose state can be reconstructed from
+  observed outputs — a man-in-the-middle observing cnonces could
+  predict future values. Replaced with `secrets.token_hex(16)`
+  (OS CSPRNG, same 128 bits, same 32-hex-digit format); the `random`
+  import is gone from the module entirely. Pinned by a regression
+  test asserting the module no longer uses the `random` module for
+  the digest path.
+- **Client disconnects no longer flood the log with tracebacks.**
+  When a phone drops the connection mid-download (short Yealink
+  timeout, flaky Wi-Fi, 408 contacts), the handler thread raised
+  BrokenPipeError and socketserver's default `handle_error` printed a
+  40-line separator wall plus full traceback to stderr for EVERY such
+  event — flooding the container log and breaking json-format log
+  pipelines with raw stderr. The new `_QuietDisconnectServer` (a
+  ThreadingHTTPServer subclass, threading behavior unchanged) logs
+  expected disconnects (BrokenPipe, ConnectionReset, ConnectionAborted,
+  TLS EOF) as one warning line; every other exception keeps the full
+  traceback — the override never swallows real bugs. Pinned by
+  regression tests for both behaviors (one-line warning on
+  BrokenPipeError, full traceback preserved on RuntimeError).
+- **Slowloris pinned handler threads forever — fixed with a socket
+  timeout.** BaseHTTPRequestHandler blocks in `rfile.readline()`
+  with no timeout by default: a client that sends one byte of the
+  request line and then goes silent holds the handler thread for as
+  long as the connection stays open. Verified during the red-team
+  audit — 30 stalled connections pinned 30 threads indefinitely
+  (each holding a file descriptor and stack); over time an attacker
+  or broken client exhausts threads/FDs while the Docker HEALTHCHECK
+  keeps passing. `PhonebookHandler.timeout = 30` bounds every
+  connection: readline() raises TimeoutError, the quiet-disconnect
+  handler logs one line, the thread is released. 30s comfortably
+  covers slow phone polls and downloads. Pinned by regression tests:
+  a stalled connection is dropped within the timeout, the handler
+  thread is released, /health keeps serving during and after the
+  attack, and the timeout attribute is never None.
+- **Phonebook names no longer leak through auth-free `/metrics`.**
+  The `yfps_phonebook_contacts` metric carried the phonebook NAME as
+  a label — private metadata (household structure, family names)
+  readable by every unauthenticated LAN device, contradicting the
+  threat model's "no contact data" justification for the open
+  /metrics endpoint. The label now carries the book ID only; the
+  id→name mapping lives in the auth-protected /menu.xml. Grafana
+  dashboard legend updated to `phonebook {{id}}`. Found during the
+  red-team audit; pinned by regression tests asserting the name
+  never appears in /metrics output while id and count stay intact.
+
 ## [0.15.1] - 2026-11-22
 
 ### Changed

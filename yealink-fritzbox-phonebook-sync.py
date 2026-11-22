@@ -51,8 +51,8 @@ import ipaddress
 import json
 import logging
 import os
-import random
 import re
+import secrets
 import signal
 import socket
 import ssl
@@ -60,7 +60,7 @@ import sys
 import threading
 import time
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import cast
 from urllib.request import urlopen
@@ -70,7 +70,7 @@ logger = logging.getLogger("fritz-pb-sync")
 # App version: the single source of truth for humans (startup log),
 # the /metrics endpoint (yfps_build_info) and the release process.
 # Bump on every release (keep in sync with CHANGELOG.md and git tags).
-APP_VERSION = "0.15.1"
+APP_VERSION = "0.16.0"
 
 
 class _RateLimiter:
@@ -151,7 +151,7 @@ class _JsonLogFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         payload = {
-            "ts": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
+            "ts": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "msg": record.getMessage(),
@@ -389,7 +389,12 @@ class FritzboxClient:
         ha2 = hashlib.md5(f"POST:{uri}".encode()).hexdigest()
 
         if qop:
-            cnonce = "%032x" % random.getrandbits(128)
+            # CSPRNG cnonce (RFC 7616: >= 64 bits of entropy): the
+            # Mersenne-Twister PRNG's state can be reconstructed from
+            # observed outputs, letting a MITM predict future cnonces.
+            # secrets.token_hex(16) = 128 bits from the OS CSPRNG, same
+            # 32-hex-digit format.
+            cnonce = secrets.token_hex(16)
             nc = "00000001"
             response = hashlib.md5(f"{ha1}:{nonce}:{nc}:{cnonce}:{qop}:{ha2}".encode()).hexdigest()
             return (
@@ -514,7 +519,7 @@ class FritzboxClient:
                     if not chunk:
                         break
                     chunks.append(chunk)
-                except socket.timeout:
+                except TimeoutError:
                     break
         finally:
             sock.close()
@@ -556,14 +561,6 @@ class FritzboxClient:
         logger.info("Downloading phonebook %d from %s", phonebook_id, url)
         resp = urlopen(url, timeout=DOWNLOAD_TIMEOUT)
         return bytes(resp.read())
-
-    def fetch_all_phonebooks(self, ids: list[int]) -> bytes:
-        """Download multiple phonebooks. Returns concatenated bytes.
-
-        Stops on first failure — atomicity over partial results.
-        """
-        chunks = [self.fetch_phonebook(pid) for pid in ids]
-        return b"\n".join(chunks)
 
 
 # ---------------------------------------------------------------------------
@@ -1038,10 +1035,48 @@ rate_limiter = _RateLimiter()
 tls_enabled = False
 ip_allowlist = _IpAllowlist("")
 
+
 # Threading server: one hung client must never block the health check
 # (24/7 requirement — a single-threaded server would let Docker's
 # HEALTHCHECK time out and restart-loop the container).
-_SERVER_CLASS = ThreadingHTTPServer
+class _QuietDisconnectServer(ThreadingHTTPServer):
+    """ThreadingHTTPServer that logs client disconnects as one line.
+
+    socketserver's default handle_error prints a 40-line separator wall
+    and a full traceback for EVERY handler exception. When a Yealink
+    drops the connection mid-response (short timeout, 408 contacts,
+    flaky Wi-Fi) the handler thread raises BrokenPipeError /
+    ConnectionResetError — an EXPECTED event that must not flood the
+    log (and must not break json-format log pipelines with raw stderr).
+    Expected disconnects log one warning line; every other exception
+    keeps the full traceback — the override must never swallow bugs.
+    """
+
+    def handle_error(
+        self, request: socket.socket | tuple[bytes, socket.socket], client_address: tuple[str, int]
+    ) -> None:
+        exc = sys.exc_info()[1]
+        if isinstance(
+            exc,
+            (
+                BrokenPipeError,
+                ConnectionResetError,
+                ConnectionAbortedError,
+                ssl.SSLEOFError,
+            ),
+        ):
+            logger.warning(
+                "Client %s disconnected mid-response (%s) — ignoring",
+                client_address,
+                type(exc).__name__,
+            )
+            return
+        # Not a client disconnect: surface the full traceback (default
+        # behavior) — real bugs must stay visible in operations.
+        super().handle_error(request, client_address)
+
+
+_SERVER_CLASS = _QuietDisconnectServer
 
 
 def _load_tls_config() -> tuple[str, str] | None:
@@ -1121,6 +1156,15 @@ def _placeholder_menu(server_base: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _age_or_never(timestamp: float) -> int:
+    """Seconds since `timestamp`, or -1 when it is zero (never happened).
+
+    Shared by /metrics and /health so the "-1 = never" contract lives
+    in exactly one place.
+    """
+    return int(time.time() - timestamp) if timestamp else -1
+
+
 def _prune_fetch_ips(ips: dict[str, float], limit: int = 10) -> dict[str, float]:
     """Prune the per-IP fetch map to the `limit` most recent fetchers.
 
@@ -1136,6 +1180,30 @@ def _prune_fetch_ips(ips: dict[str, float], limit: int = 10) -> dict[str, float]
 class PhonebookHandler(BaseHTTPRequestHandler):
     # Yealink phones expect HTTP/1.1; BaseHTTPRequestHandler defaults to 1.0
     protocol_version = "HTTP/1.1"
+
+    # Socket timeout per connection (Slowloris defense, red-team audit
+    # 2026-11-22): BaseHTTPRequestHandler blocks in rfile.readline()
+    # with NO timeout by default — a client that sends one byte of the
+    # request line and then goes silent pins the handler thread for as
+    # long as it holds the socket open (verified: 30 stalled
+    # connections pinned 30 threads indefinitely; each holds an FD and
+    # stack). With the timeout set, readline() raises TimeoutError after
+    # this many seconds; the server's quiet-disconnect handler logs one
+    # line and the thread is released. 30s comfortably covers slow
+    # phone polls and downloads while bounding resource exhaustion.
+    timeout = 30
+
+    # Suppress the default `Server: BaseHTTP/0.6 Python/3.x.y` header on
+    # every error path (404/401/403/429 via send_error/send_response) —
+    # it hands an attacker the exact interpreter version for free
+    # (version-specific exploits, recon). The 200 path (_serve) never sent
+    # it. Overriding send_response drops the header entirely (an empty
+    # version_string would leave a bare `Server: ` line behind); the
+    # Date header and request logging are preserved.
+    def send_response(self, code: int, message: str | None = None) -> None:
+        self.log_request(code)
+        self.send_response_only(code, message)
+        self.send_header("Date", self.date_time_string())
 
     def _check_auth(self) -> bool:
         """Validate HTTP Basic Auth. Returns True if authorized or auth disabled."""
@@ -1216,8 +1284,8 @@ class PhonebookHandler(BaseHTTPRequestHandler):
     def _render_metrics(self) -> list[str]:
         """Prometheus exposition text for /metrics (caller serves it)."""
         with state.lock:
-            age = int(time.time() - state.last_sync) if state.last_sync else -1
-            fetch_age = int(time.time() - state.last_phone_fetch) if state.last_phone_fetch else -1
+            age = _age_or_never(state.last_sync)
+            fetch_age = _age_or_never(state.last_phone_fetch)
             # Degraded = last successful sync older than 3x the refresh
             # interval (or never synced). /health keeps returning 200/ok
             # in this state — the server itself is fine, only the
@@ -1273,16 +1341,20 @@ class PhonebookHandler(BaseHTTPRequestHandler):
             ]
             # Per-phonebook contact count — a shrinking source (e.g.
             # broken Google import into the Fritzbox) is visible per
-            # phonebook, not just in the global sum.
+            # phonebook, not just in the global sum. The label carries
+            # the book ID only: /metrics is auth-free and phonebook
+            # NAMES are private metadata (household structure) — the
+            # id→name mapping lives in the auth-protected /menu.xml
+            # (red-team audit 2026-11-22: the name label leaked private
+            # names to every unauthenticated LAN device).
             if state.pb_meta:
                 lines.append("# HELP yfps_phonebook_contacts Contact count per phonebook")
                 lines.append("# TYPE yfps_phonebook_contacts gauge")
                 for pb in state.pb_meta:
                     lines.append(  # noqa: PERF401 — append keeps the metric line format explicit
-                        'yfps_phonebook_contacts{id="%d",name="%s"} %d'
+                        'yfps_phonebook_contacts{id="%d"} %d'
                         % (
                             cast(int, pb["id"]),
-                            self._prom_escape_label(str(pb["name"])),
                             cast(int, pb["count"]),
                         )
                     )
@@ -1314,7 +1386,7 @@ class PhonebookHandler(BaseHTTPRequestHandler):
     def _serve_health(self) -> None:
         """Minimal JSON health payload (open endpoint, Docker HEALTHCHECK)."""
         with state.lock:
-            age = int(time.time() - state.last_sync) if state.last_sync else -1
+            age = _age_or_never(state.last_sync)
             payload = '{"status":"ok","contacts":%d,"last_sync_age_sec":%d}' % (
                 state.total_contacts,
                 age,
@@ -1565,7 +1637,7 @@ def _run_check(client: FritzboxClient, phonebook_id_arg: str) -> int:
                     "WARN: phonebook %d '%s': 0 usable contacts "
                     "(only internal numbers or empty)" % (pid, name)
                 )
-        except Exception as exc:  # noqa: PERF203 — per-book isolation is the design: one failing book must not abort the check
+        except Exception as exc:
             print("FAIL: cannot fetch/convert phonebook %d: %s" % (pid, exc))
             exit_code = 1
     if exit_code:
@@ -1771,12 +1843,16 @@ def _external_urls(args: argparse.Namespace) -> tuple[str, str]:
         # Embed credentials in the external URL for the phone
         # The AX83H does not have separate username/password fields for
         # remote phonebooks, so credentials must be in the URL.
-        if "://" in server_base:
-            scheme, _, rest = server_base.partition("://")
-            external_url = "%s://%s:%s@%s" % (scheme, auth_user, auth_pass, rest)
-        else:
-            external_url = "http://%s:%s@%s" % (auth_user, auth_pass, server_base)
-        logger.info("External URL (with embedded auth): %s", external_url)
+        # The URL itself carries the REAL password (the phone needs it);
+        # only the LOG line below is masked — logging the plain password
+        # would leak it to every reader of the container log, contradicting
+        # the threat model's "Credentials never logged" promise.
+        scheme, _, rest = server_base.partition("://")
+        if not scheme:
+            # No scheme in server_base: default to http (pre-refactor behavior)
+            scheme, rest = "http", server_base
+        external_url = "%s://%s:%s@%s" % (scheme, auth_user, auth_pass, rest)
+        logger.info("External URL (with embedded auth): %s://%s:***@%s", scheme, auth_user, rest)
     else:
         logger.warning("HTTP Basic Auth DISABLED — phonebook is accessible without credentials")
     return server_base, external_url
