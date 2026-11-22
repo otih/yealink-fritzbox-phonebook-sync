@@ -1113,6 +1113,15 @@ def _placeholder_menu(server_base: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _age_or_never(timestamp: float) -> int:
+    """Seconds since `timestamp`, or -1 when it is zero (never happened).
+
+    Shared by /metrics and /health so the "-1 = never" contract lives
+    in exactly one place.
+    """
+    return int(time.time() - timestamp) if timestamp else -1
+
+
 def _prune_fetch_ips(ips: dict[str, float], limit: int = 10) -> dict[str, float]:
     """Prune the per-IP fetch map to the `limit` most recent fetchers.
 
@@ -1208,8 +1217,8 @@ class PhonebookHandler(BaseHTTPRequestHandler):
     def _render_metrics(self) -> list[str]:
         """Prometheus exposition text for /metrics (caller serves it)."""
         with state.lock:
-            age = int(time.time() - state.last_sync) if state.last_sync else -1
-            fetch_age = int(time.time() - state.last_phone_fetch) if state.last_phone_fetch else -1
+            age = _age_or_never(state.last_sync)
+            fetch_age = _age_or_never(state.last_phone_fetch)
             # Degraded = last successful sync older than 3x the refresh
             # interval (or never synced). /health keeps returning 200/ok
             # in this state — the server itself is fine, only the
@@ -1306,7 +1315,7 @@ class PhonebookHandler(BaseHTTPRequestHandler):
     def _serve_health(self) -> None:
         """Minimal JSON health payload (open endpoint, Docker HEALTHCHECK)."""
         with state.lock:
-            age = int(time.time() - state.last_sync) if state.last_sync else -1
+            age = _age_or_never(state.last_sync)
             payload = '{"status":"ok","contacts":%d,"last_sync_age_sec":%d}' % (
                 state.total_contacts,
                 age,

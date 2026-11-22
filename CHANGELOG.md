@@ -30,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **ruff pinned to 0.17.5** (was 0.17.2): lint and format clean
   on the new version, no rule changes affecting this codebase
   (0.17.3-0.17.5 are bugfix/performance releases).
+- **Internal: `_age_or_never()` helper deduplicates the age
+  computation.** The "seconds since X, or -1 when it never happened"
+  expression existed identically in `_render_metrics` and
+  `_serve_health`; the "-1 = never" contract now lives in exactly
+  one place. Pure refactor, no behavior change.
 
 ### Removed
 
