@@ -6,7 +6,7 @@ FROM python:3.15-alpine
 
 LABEL org.opencontainers.image.title="yealink-fritzbox-phonebook-sync"
 LABEL org.opencontainers.image.description="Fritzbox → Yealink phonebook sync server"
-LABEL org.opencontainers.image.source="https://github.com/local/yealink-fritzbox-phonebook-sync"
+LABEL org.opencontainers.image.source="https://github.com/otih/yealink-fritzbox-phonebook-sync"
 
 # Build provenance labels — `docker inspect` shows what this image is built on.
 # org.opencontainers.image.base.name/digest answer "which base, exactly?" and
