@@ -557,14 +557,6 @@ class FritzboxClient:
         resp = urlopen(url, timeout=DOWNLOAD_TIMEOUT)
         return bytes(resp.read())
 
-    def fetch_all_phonebooks(self, ids: list[int]) -> bytes:
-        """Download multiple phonebooks. Returns concatenated bytes.
-
-        Stops on first failure — atomicity over partial results.
-        """
-        chunks = [self.fetch_phonebook(pid) for pid in ids]
-        return b"\n".join(chunks)
-
 
 # ---------------------------------------------------------------------------
 # Fritzbox XML → Yealink remote phonebook XML converter

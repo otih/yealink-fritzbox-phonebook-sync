@@ -31,6 +31,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on the new version, no rule changes affecting this codebase
   (0.17.3-0.17.5 are bugfix/performance releases).
 
+### Removed
+
+- **Dead code: `FritzboxClient.fetch_all_phonebooks` removed.** The
+  method (download all phonebooks as one concatenated blob) had no
+  callers since the per-book fetch refactor — `sync_once` and
+  `--check` fetch each book individually via `fetch_phonebook`, and
+  no test ever called it. A concatenation API does not fit the
+  per-book architecture (menu/contacts per phonebook, cache stores
+  per-book structure); keeping it invited accidental future use.
+
 ### Fixed
 
 - **Password no longer leaked to the log in plain text.** The startup log
