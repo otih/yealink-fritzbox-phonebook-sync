@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   5.0.0). Major bumps on both sides of the pair; the full suite
   (174 tests) runs green, coverage reporting and the 75% branch
   gate behave identically (78.9% actual).
+- **ruff pinned to 0.17.5** (was 0.17.2): lint and format clean
+  on the new version, no rule changes affecting this codebase
+  (0.17.3-0.17.5 are bugfix/performance releases).
 
 ## [0.15.1] - 2026-11-22
 

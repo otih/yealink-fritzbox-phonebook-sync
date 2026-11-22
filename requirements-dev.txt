@@ -3,7 +3,7 @@
 # install lets the gate drift (new rules can fail green commits or,
 # worse, silently stop flagging). Bump deliberately via PR, same
 # discipline as the Docker base image.
-ruff==0.17.2
+ruff==0.17.5
 mypy==2.4.1
 pytest==9.2.0
 pytest-cov==7.1.0
