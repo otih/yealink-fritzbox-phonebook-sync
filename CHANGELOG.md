@@ -106,6 +106,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a stalled connection is dropped within the timeout, the handler
   thread is released, /health keeps serving during and after the
   attack, and the timeout attribute is never None.
+- **Phonebook names no longer leak through auth-free `/metrics`.**
+  The `yfps_phonebook_contacts` metric carried the phonebook NAME as
+  a label — private metadata (household structure, family names)
+  readable by every unauthenticated LAN device, contradicting the
+  threat model's "no contact data" justification for the open
+  /metrics endpoint. The label now carries the book ID only; the
+  id→name mapping lives in the auth-protected /menu.xml. Grafana
+  dashboard legend updated to `phonebook {{id}}`. Found during the
+  red-team audit; pinned by regression tests asserting the name
+  never appears in /metrics output while id and count stay intact.
 
 ## [0.15.1] - 2026-11-22
 
