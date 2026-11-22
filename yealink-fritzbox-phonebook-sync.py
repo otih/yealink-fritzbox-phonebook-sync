@@ -1138,6 +1138,18 @@ class PhonebookHandler(BaseHTTPRequestHandler):
     # Yealink phones expect HTTP/1.1; BaseHTTPRequestHandler defaults to 1.0
     protocol_version = "HTTP/1.1"
 
+    # Suppress the default `Server: BaseHTTP/0.6 Python/3.x.y` header on
+    # every error path (404/401/403/429 via send_error/send_response) —
+    # it hands an attacker the exact interpreter version for free
+    # (version-specific exploits, recon). The 200 path (_serve) never sent
+    # it. Overriding send_response drops the header entirely (an empty
+    # version_string would leave a bare `Server: ` line behind); the
+    # Date header and request logging are preserved.
+    def send_response(self, code: int, message: str | None = None) -> None:
+        self.log_request(code)
+        self.send_response_only(code, message)
+        self.send_header("Date", self.date_time_string())
+
     def _check_auth(self) -> bool:
         """Validate HTTP Basic Auth. Returns True if authorized or auth disabled."""
         if not auth_user:

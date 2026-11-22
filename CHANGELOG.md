@@ -58,6 +58,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`user:***@host`). Found during a code review; pinned by a regression
   test (`tests/test_log_masking.py`) that asserts the password never
   appears in the log output.
+- **Server header no longer leaks the Python version.** Every error
+  response (404/401/403/429) carried `Server: BaseHTTP/0.6
+  Python/3.x.y` by default — the exact interpreter version, handed
+  to any client for free (version-specific exploits, recon). The
+  200 path never sent it; now no path does: `send_response` is
+  overridden to drop the header entirely (Date header and request
+  logging preserved). Pinned by regression tests that assert on the
+  live server socket (404, 401 and health paths) — no Python/ or
+  BaseHTTP string in any response.
 
 ## [0.15.1] - 2026-11-22
 
